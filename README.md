@@ -15,7 +15,7 @@ Jetson does not require modifications.
 ## Module Configurations
 
 | Module | `MODULE_DEFINE` | CAN ID |
-|---|---|---|---|
+|---|---|---|
 | Head | `MK2_MOD1` | `0x21` |
 | Middle | `MK2_MOD2` | `0x22` |
 | Tail | `MK2_MOD3` | `0x23` |
