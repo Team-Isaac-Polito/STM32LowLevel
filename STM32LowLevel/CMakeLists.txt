@@ -58,6 +58,8 @@ target_include_directories(debug_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
 )
+# Inherit STM32G474xx / USE_FULL_LL_DRIVER / USE_HAL_DRIVER from stm32cubemx
+target_link_libraries(debug_lib PUBLIC stm32cubemx)
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
