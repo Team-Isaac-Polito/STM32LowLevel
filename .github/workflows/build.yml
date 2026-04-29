@@ -9,7 +9,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [MK2_MOD1, MK2_MOD2, MK2_MOD3]
+    name: Build (${{ matrix.module }})
     steps:
       - uses: actions/checkout@v4
-      # TODO: build steps to be added
-      - run: echo "CI placeholder -- build steps not yet configured"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi
+
+      - name: Configure (${{ matrix.module }})
+        working-directory: STM32LowLevel
+        run: cmake --preset Debug -DMODULE_DEFINE=${{ matrix.module }}
+
+      - name: Build (${{ matrix.module }})
+        working-directory: STM32LowLevel
+        run: cmake --build build/Debug
