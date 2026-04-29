@@ -117,8 +117,9 @@
  * Last page (page 127) at 0x0807F800 — 2 KB per page.
  * Write sequence per RM0440 §3.3: unlock → erase → write 64-bit words → lock.
  * ----------------------------------------------------------------------- */
-#define HOME_FLASH_PAGE_ADDR    0x0807F800UL  /**< Start of last Flash page */
-#define HOME_FLASH_PAGE_SIZE    2048U         /**< Page size (bytes)        */
-#define HOME_FLASH_PAGE_NUM     127U          /**< Page index               */
+#define HOME_FLASH_PAGE_ADDR    0x0807F800UL  /**< Start address of last Flash page (Bank 2, page 127) */
+#define HOME_FLASH_PAGE_SIZE    2048U         /**< Page size (bytes) — 2 KB in dual-bank mode (DBANK=1) */
+#define HOME_FLASH_PAGE_NUM     127U          /**< Page index within Bank 2 (0–127; dual-bank mode) */
+#define HOME_FLASH_BANK         FLASH_BANK_2  /**< Must match HOME_FLASH_PAGE_ADDR; pass to HAL_FLASHEx_Erase .Banks */
 
 #endif /* DEFINITIONS_H */
