@@ -23,6 +23,30 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
             }
+        },
+        {
+            "name": "MK2_MOD1",
+            "inherits": "Debug",
+            "displayName": "Debug — MK2 MOD1 (HEAD)",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD1"
+            }
+        },
+        {
+            "name": "MK2_MOD2",
+            "inherits": "Debug",
+            "displayName": "Debug — MK2 MOD2 (MIDDLE)",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD2"
+            }
+        },
+        {
+            "name": "MK2_MOD3",
+            "inherits": "Debug",
+            "displayName": "Debug — MK2 MOD3 (TAIL)",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD3"
+            }
         }
     ],
     "buildPresets": [
@@ -33,6 +57,18 @@
         {
             "name": "Release",
             "configurePreset": "Release"
+        },
+        {
+            "name": "MK2_MOD1",
+            "configurePreset": "MK2_MOD1"
+        },
+        {
+            "name": "MK2_MOD2",
+            "configurePreset": "MK2_MOD2"
+        },
+        {
+            "name": "MK2_MOD3",
+            "configurePreset": "MK2_MOD3"
         }
     ]
 }

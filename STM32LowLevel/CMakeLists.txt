@@ -49,12 +49,25 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
+    # Shared headers: mod_config.h, definitions.h, communication.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Inc
 )
+
+# Forward MODULE_DEFINE to the C/C++ preprocessor
+# Usage: cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1
+if(NOT DEFINED MODULE_DEFINE)
+    message(FATAL_ERROR
+        "MODULE_DEFINE is not set. "
+        "Pass it on the command line, e.g.:\n"
+        "  cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1\n"
+        "Valid values: MK2_MOD1 (0x21), MK2_MOD2 (0x22), MK2_MOD3 (0x23)")
+endif()
+message(STATUS "Building for module: ${MODULE_DEFINE}")
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined symbols
+    # Module identity — forwarded from -DMODULE_DEFINE=<variant>
+    MODULE_DEFINE=${MODULE_DEFINE}
 )
 
 # Remove wrong libob.a library dependency when using cpp files
