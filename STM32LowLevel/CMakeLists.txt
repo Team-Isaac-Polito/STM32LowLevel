@@ -47,10 +47,24 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
 )
 
+# Debug library (UART5 LL backend)
+add_library(debug_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Debug/Debug.cpp
+)
+target_include_directories(debug_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Debug
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+)
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Shared headers: mod_config.h, definitions.h, communication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Inc
+    # Debug library public headers (also exposed via debug_lib target)
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Debug
 )
 
 # Forward MODULE_DEFINE to the C/C++ preprocessor
@@ -76,6 +90,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
+    debug_lib
 
     # Add user defined libraries
 )
