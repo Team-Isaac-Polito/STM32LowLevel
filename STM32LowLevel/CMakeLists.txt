@@ -61,12 +61,23 @@ target_include_directories(debug_lib PUBLIC
 # Inherit STM32G474xx / USE_FULL_LL_DRIVER / USE_HAL_DRIVER from stm32cubemx
 target_link_libraries(debug_lib PUBLIC stm32cubemx)
 
+# DynamixelLL library (USART2/3 LL backend, hardware CRC)
+add_library(dynamixel_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelLL/DynamixelLL.cpp
+)
+target_include_directories(dynamixel_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelLL
+)
+target_link_libraries(dynamixel_lib PUBLIC debug_lib)
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Shared headers: mod_config.h, definitions.h, communication.h
     ${CMAKE_CURRENT_SOURCE_DIR}/Inc
     # Debug library public headers (also exposed via debug_lib target)
     ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Debug
+    # DynamixelLL library public headers
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelLL
 )
 
 # Forward MODULE_DEFINE to the C/C++ preprocessor
@@ -93,6 +104,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
     debug_lib
+    dynamixel_lib
 
     # Add user defined libraries
 )
