@@ -70,6 +70,20 @@ target_include_directories(dynamixel_lib PUBLIC
 )
 target_link_libraries(dynamixel_lib PUBLIC debug_lib)
 
+# CAN wrapper library (FDCAN2 register-level runtime TX/RX)
+add_library(can_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/CanWrapper/CanWrapper.cpp
+)
+target_include_directories(can_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/CanWrapper
+    ${CMAKE_CURRENT_SOURCE_DIR}/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+)
+target_link_libraries(can_lib PUBLIC stm32cubemx)
+
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Shared headers: mod_config.h, definitions.h, communication.h
@@ -96,6 +110,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Module identity — forwarded from -DMODULE_DEFINE=<variant>
     MODULE_DEFINE=${MODULE_DEFINE}
 )
+# can_lib needs MODULE_DEFINE to resolve CAN_ID in mod_config.h
+target_compile_definitions(can_lib PRIVATE MODULE_DEFINE=${MODULE_DEFINE})
 
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
@@ -105,6 +121,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
     debug_lib
     dynamixel_lib
+    can_lib
 
     # Add user defined libraries
 )
