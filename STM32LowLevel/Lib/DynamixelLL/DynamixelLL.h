@@ -22,16 +22,17 @@
 
 
 // Instruction codes
-#define DXL_INST_PING          0x01u
-#define DXL_INST_READ          0x02u
-#define DXL_INST_WRITE         0x03u
-#define DXL_INST_FACTORY_RESET 0x06u
-#define DXL_INST_REBOOT        0x08u
-#define DXL_INST_SYNC_WRITE    0x83u
-#define DXL_INST_SYNC_READ     0x82u
-#define DXL_INST_BULK_WRITE    0x93u
-#define DXL_INST_BULK_READ     0x92u
-#define DXL_STATUS_INST        0x55u
+#define DXL_INST_PING          0x01u  //< Instruction that checks whether the Packet has arrived at a device with the same ID as the specified packet ID
+#define DXL_INST_READ          0x02u  //< Instruction to read data from the Device
+#define DXL_INST_WRITE         0x03u  //< Instruction to write data to the Device
+#define DXL_INST_FACTORY_RESET 0x06u  //< Instruction that resets the Control Table to its initial factory default settings
+#define DXL_INST_REBOOT        0x08u  //< Instruction to reboot the Device
+#define DXL_INST_SYNC_WRITE    0x83u  //< Instruction to write data to multiple devices with the same Address with the same length at once
+#define DXL_INST_SYNC_READ     0x82u  //< Instruction to read data from multiple devices with the same Address with the same length at once
+#define DXL_INST_BULK_WRITE    0x93u  //< Instruction to write data to multiple devices with different Addresses with different lengths at once
+#define DXL_INST_BULK_READ     0x92u  //< Instruction to read data from multiple devices with different Addresses with different lengths at once
+#define DXL_STATUS_INST        0x55u  //< Return packet sent following the execution of an Instruction Packet
+
 #define DXL_BROADCAST_ID       0xFEu  //< Broadcast ID
 #define DXL_RX_TIMEOUT_MS      10u    //< Receive timeout in milliseconds
 #define DXL_MAX_PACKET_SIZE    128u   //< Maximum receive buffer size (bytes)
@@ -418,11 +419,6 @@ public:
      */
     uint8_t bulkRead(const uint8_t *ids, uint16_t *addresses,
                      uint8_t *dataLengths, uint32_t *values, uint8_t count);
-
-    // ------------------------------------------------------------------
-    // Sync overloads — broadcast different values to each motor at once.
-    // Require enableSync() to have been called first.
-    // ------------------------------------------------------------------
 
     /** @brief Set operating mode for each motor in the sync group. */
     template <uint8_t N>

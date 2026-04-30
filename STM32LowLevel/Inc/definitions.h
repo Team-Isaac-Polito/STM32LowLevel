@@ -72,8 +72,8 @@
 
 // Default arm home positions (DXL extended-position units)
 // Hardcoded values used at startup and overridden by valid Flash-stored values.
-#define ARM_HOME_NUM_MOTORS     7
-#define ARM_DEFAULT_HOME        {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6
+#define ARM_HOME_NUM_MOTORS   7                                        ///< Number of arm motors (including beak/gripper)
+#define ARM_DEFAULT_HOME      {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6
 
 // Flash storage for home positions (STM32G474, 512 KB Flash with dual bank)
 #define HOME_FLASH_PAGE_ADDR    0x0807F800UL  ///< Start address of last Flash page (Bank 2, page 127)
