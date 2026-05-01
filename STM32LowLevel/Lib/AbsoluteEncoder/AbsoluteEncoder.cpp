@@ -13,11 +13,6 @@ static constexpr uint32_t I2C_LOOPS_PER_MS = 34000U;
 
 AbsoluteEncoder::AbsoluteEncoder(uint8_t addr) : _addr(addr) {}
 
-void AbsoluteEncoder::begin()
-{
-    // Nothing else to initialise; sensor does not require a startup command.
-}
-
 void AbsoluteEncoder::setZero()
 {
     // Write 0 first, then read current angle and write it as the new zero.

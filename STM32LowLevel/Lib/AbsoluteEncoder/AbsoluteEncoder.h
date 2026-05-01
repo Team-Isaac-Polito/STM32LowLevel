@@ -30,11 +30,6 @@ public:
     explicit AbsoluteEncoder(uint8_t addr = AS5048B_DEFAULT_ADDR);
 
     /**
-     * @brief Initialise the driver. Call once after MX_I2C1_Init().
-     */
-    void begin();
-
-    /**
      * @brief Store the current position as the zero reference.
      *
      * Writes the current angle into the AS5048B zero-position registers
