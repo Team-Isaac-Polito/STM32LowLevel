@@ -126,6 +126,20 @@ target_include_directories(encoder_lib PUBLIC
 )
 target_link_libraries(encoder_lib PUBLIC stm32cubemx)
 
+# Battery voltage monitor (ADC1 IN1, PA0, LL single-conversion)
+add_library(battery_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Battery/Battery.cpp
+)
+target_include_directories(battery_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/Battery
+    ${CMAKE_CURRENT_SOURCE_DIR}/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+)
+target_link_libraries(battery_lib PUBLIC stm32cubemx)
+
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
@@ -136,6 +150,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     dynamixel_lib
     can_lib
     encoder_lib
+    battery_lib
 
     # Add user defined libraries
 )
