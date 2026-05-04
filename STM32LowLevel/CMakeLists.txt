@@ -113,6 +113,19 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
 # can_lib needs MODULE_DEFINE to resolve CAN_ID in mod_config.h
 target_compile_definitions(can_lib PRIVATE MODULE_DEFINE=${MODULE_DEFINE})
 
+# AS5048B AbsoluteEncoder library (I2C1 LL polling)
+add_library(encoder_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/AbsoluteEncoder/AbsoluteEncoder.cpp
+)
+target_include_directories(encoder_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/AbsoluteEncoder
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+)
+target_link_libraries(encoder_lib PUBLIC stm32cubemx)
+
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
@@ -122,6 +135,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     debug_lib
     dynamixel_lib
     can_lib
+    encoder_lib
 
     # Add user defined libraries
 )
