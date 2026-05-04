@@ -190,8 +190,8 @@ extern "C" int main(void)
   if (!imu.checkID()) {
       Debug.log(Level::LOG_WARN, "[main] IMU not found at 0x%02X!\n", IMU_ADDRESS);
   } else {
-      imu.enableAccel();
       imu.enableGyro();
+      imu.enableAccel();
       imu.calibrateAccel();
       imu.calibrateGyro();
       Debug.log(Level::LOG_INFO, "[main] IMU ready\n");
@@ -238,8 +238,7 @@ extern "C" int main(void)
         can_active = false;
         speeds_dxl[0] = 0.0f;
         speeds_dxl[1] = 0.0f;
-        mot_left.setGoalVelocity_RPM(0.0f);
-        mot_right.setGoalVelocity_RPM(0.0f);
+        dxl_traction.setGoalVelocity_RPM(speeds_dxl);
         Debug.log(Level::LOG_WARN, "[main] CAN timeout, motors stopped\n");
     }
 
@@ -320,6 +319,11 @@ extern "C" void SystemClock_Config(void)
 static void DXL_TRACTION_INIT(void)
 {
     static const uint8_t n = sizeof(traction_ids) / sizeof(traction_ids[0]);
+
+    // Enable RS-485 half-duplex DE mode on USART2 (must precede any DXL packet)
+    dxl_traction.begin();
+    mot_left.begin();
+    mot_right.begin();
 
     // Disable torque first for safe reconfiguration
     mot_left.setTorqueEnable(false);
