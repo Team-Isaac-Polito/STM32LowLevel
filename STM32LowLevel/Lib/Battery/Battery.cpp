@@ -16,6 +16,9 @@ void Battery::begin()
     while (LL_ADC_IsCalibrationOnGoing(ADC1)) {
         if (--count == 0U) return;
     }
+    // ADEN must not be set during the 4 ADC clock cycles immediately after ADCAL is cleared.
+    volatile uint32_t delayCalib = (LL_ADC_DELAY_CALIB_ENABLE_ADC_CYCLES >> 1U);
+    while (delayCalib != 0U) { delayCalib--; }
     LL_ADC_Enable(ADC1);
     count = ADC_TIMEOUT_LOOPS;
     while (!LL_ADC_IsActiveFlag_ADRDY(ADC1)) {
