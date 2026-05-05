@@ -132,7 +132,6 @@ static int32_t ARM_pos_mot_2 = 0, ARM_old_pos_mot_2 = 0;
 static int32_t ARM_pos_mot_3 = 0, ARM_old_pos_mot_3 = 0;
 static int32_t ARM_pos_mot_4 = 0, ARM_old_pos_mot_4 = 0;
 static int32_t ARM_pos_mot_5 = 0, ARM_old_pos_mot_5 = 0;
-static int32_t ARM_pos_mot_6 = 0, ARM_old_pos_mot_6 = 0;
 
 // Beak gripper state machine
 static BeakState beak_state = BeakState::IDLE;
@@ -1043,7 +1042,6 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_old_pos_mot_3 = ARM_pos0_mot_3;
         ARM_old_pos_mot_4 = ARM_pos0_mot_4;
         ARM_old_pos_mot_5 = ARM_pos0_mot_5;
-        ARM_old_pos_mot_6 = ARM_pos0_mot_6;
         Debug.log(Level::LOG_INFO, "[CAN] RESET_ARM: moving to home\n");
         break;
     }
@@ -1082,7 +1080,6 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_old_pos_mot_3 = ARM_pos0_mot_3;
         ARM_old_pos_mot_4 = ARM_pos0_mot_4;
         ARM_old_pos_mot_5 = ARM_pos0_mot_5;
-        ARM_old_pos_mot_6 = ARM_pos0_mot_6;  // beak home also reset
 
         if (msg_data[0] == 1U)
         {
