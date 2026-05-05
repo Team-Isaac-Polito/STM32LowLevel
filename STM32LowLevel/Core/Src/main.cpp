@@ -644,8 +644,8 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
     {
         // Payload layout matches PicoLowLevel: bytes[0:3]=right RPM, bytes[4:7]=left RPM.
         // speeds_dxl[0]=left, speeds_dxl[1]=right (matches traction sync-write order).
-        memcpy(&speeds_dxl[1], msg_data,     4);   // right
-        memcpy(&speeds_dxl[0], msg_data + 4, 4);   // left
+        memcpy(&speeds_dxl[0], msg_data,     4);   // right → index 0 → motor 212
+        memcpy(&speeds_dxl[1], msg_data + 4, 4);   // left  → index 1 → motor 114
 
         float coeff = ((speeds_dxl[0] + speeds_dxl[1]) < 0.0f)
             ? TRACTION_VELOCITY_COEFF_REV
@@ -805,6 +805,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_old_pos_mot_3 = ARM_pos0_mot_3;
         ARM_old_pos_mot_4 = ARM_pos0_mot_4;
         ARM_old_pos_mot_5 = ARM_pos0_mot_5;
+        ARM_old_pos_mot_6 = ARM_pos0_mot_6;  // beak home also reset
 
         if (msg_data[0] == 1U)
         {
@@ -850,6 +851,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
     case MOTOR_TRACTION_REBOOT:
         mot_left.reboot();
         mot_right.reboot();
+        HAL_Delay(2000U);   // Wait for motors to come back online (~1.5 s typical)
         DXL_TRACTION_INIT();
         Debug.log(Level::LOG_INFO, "[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
         break;
