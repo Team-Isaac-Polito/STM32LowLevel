@@ -468,8 +468,8 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         memcpy(&theta, msg_data,     4);
         memcpy(&phi,   msg_data + 4, 4);
 
-        ARM_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[0];
-        ARM_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[1];
+        ARM_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[0];
+        ARM_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[1];
 
         if ((abs(ARM_pos_mot_1LR[0] - ARM_old_pos_mot_1LR[0]) > ARM_DE_CAN_DXL) ||
             (abs(ARM_pos_mot_1LR[1] - ARM_old_pos_mot_1LR[1]) > ARM_DE_CAN_DXL))
@@ -584,6 +584,8 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_mot_4.reboot();
         ARM_mot_5.reboot();
         ARM_mot_6.reboot();
+
+        // TODO: call MODC_ARM_INIT() here after reboot
         Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted\n");
         break;
     }
