@@ -80,5 +80,6 @@
 #define HOME_FLASH_PAGE_SIZE    2048U         ///< Page size (bytes) — 2 KB in dual-bank mode (DBANK=1)
 #define HOME_FLASH_PAGE_NUM     127U          ///< Page index within Bank 2 (0–127; dual-bank mode)
 #define HOME_FLASH_BANK         FLASH_BANK_2  ///< Must match HOME_FLASH_PAGE_ADDR; pass to HAL_FLASHEx_Erase .Banks
+#define HOME_FLASH_MAGIC        0xA55AC0DEU   ///< Sentinel written at word[7]; validates stored home positions
 
 #endif /* DEFINITIONS_H */
