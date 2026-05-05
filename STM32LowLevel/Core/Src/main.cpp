@@ -166,6 +166,12 @@ extern "C" int  main(void);
 static void sendFeedback(void);
 static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data);
 static void DXL_TRACTION_INIT(void);
+#ifdef MODC_ARM
+static void DXL_ARM_INIT(void);
+#endif
+#ifdef MODC_JOINT
+static void DXL_JOINT_INIT(void);
+#endif
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -235,15 +241,13 @@ extern "C" int main(void)
   Debug.log(Level::LOG_INFO, "[main] Traction DXL ready\n");
 
 #ifdef MODC_ARM
-  // Arm DXL sync handle — register J1a/J1b motor IDs for sync-write
-  ARM_dxl.enableSync(arm_ids, sizeof(arm_ids));
-  Debug.log(Level::LOG_INFO, "[main] Arm sync handle configured\n");
+  DXL_ARM_INIT();
+  Debug.log(Level::LOG_INFO, "[main] Arm DXL ready\n");
 #endif
 
 #ifdef MODC_JOINT
-  // Joint DXL sync handle — register joint motor IDs for sync-write
-  JOINT_dxl.enableSync(joint_ids, sizeof(joint_ids));
-  Debug.log(Level::LOG_INFO, "[main] Joint sync handle configured\n");
+  DXL_JOINT_INIT();
+  Debug.log(Level::LOG_INFO, "[main] Joint DXL ready\n");
 #endif
 
   // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
@@ -421,6 +425,201 @@ static void DXL_TRACTION_INIT(void)
     mot_right.setTorqueEnable(true);
 }
 
+#ifdef MODC_ARM
+/**
+ * Initialise all 7 arm Dynamixel motors on USART2.
+ * Must be called at startup and after REBOOT_ARM.
+ * Mirrors PicoLowLevel MODC_ARM_INIT(): enables DE mode, configures sync group,
+ * drive modes, extended-position operating mode, profiles, then enables torque.
+ */
+static void DXL_ARM_INIT(void)
+{
+    // Enable RS-485 DE mode on USART2 (idempotent — traction already called begin())
+    ARM_dxl.begin();
+    ARM_mot_1a.begin();
+    ARM_mot_1b.begin();
+    ARM_mot_2.begin();
+    ARM_mot_3.begin();
+    ARM_mot_4.begin();
+    ARM_mot_5.begin();
+    ARM_mot_6.begin();
+
+    // Disable torque for safe reconfiguration
+    ARM_mot_1a.setTorqueEnable(false);
+    ARM_mot_1b.setTorqueEnable(false);
+    ARM_mot_2.setTorqueEnable(false);
+    ARM_mot_3.setTorqueEnable(false);
+    ARM_mot_4.setTorqueEnable(false);
+    ARM_mot_5.setTorqueEnable(false);
+    ARM_mot_6.setTorqueEnable(false);
+    HAL_Delay(10U);
+
+    // Status return level 2 — respond to all instructions
+    ARM_mot_1a.setStatusReturnLevel(2U);
+    ARM_mot_1b.setStatusReturnLevel(2U);
+    ARM_mot_2.setStatusReturnLevel(2U);
+    ARM_mot_3.setStatusReturnLevel(2U);
+    ARM_mot_4.setStatusReturnLevel(2U);
+    ARM_mot_5.setStatusReturnLevel(2U);
+    ARM_mot_6.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
+
+    // Register J1a/J1b as sync group for differential control
+    ARM_dxl.enableSync(arm_ids, sizeof(arm_ids));
+
+    // Drive mode: all arms — normal mode (no reverseMode, no time-based profile)
+    ARM_mot_1a.setDriveMode(false, false, false);
+    ARM_mot_1b.setDriveMode(false, false, false);
+    ARM_mot_2.setDriveMode(false, false, false);
+    ARM_mot_3.setDriveMode(false, false, false);
+    ARM_mot_4.setDriveMode(false, false, false);
+    ARM_mot_5.setDriveMode(false, false, false);
+    ARM_mot_6.setDriveMode(false, false, false);
+
+    // Operating mode 4 = Extended Position Control Mode
+    ARM_dxl.setOperatingMode(4U);
+    ARM_mot_2.setOperatingMode(4U);
+    ARM_mot_3.setOperatingMode(4U);
+    ARM_mot_4.setOperatingMode(4U);
+    ARM_mot_5.setOperatingMode(4U);
+    ARM_mot_6.setOperatingMode(4U);
+    HAL_Delay(10U);
+
+    // Smooth motion profiles
+    ARM_mot_1a.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_1a.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_1b.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_1b.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_2.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_3.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_3.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_4.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_4.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_5.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_5.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_6.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    HAL_Delay(10U);
+
+    // Read current positions before enabling torque to prevent violent startup motion
+    int32_t cur_1LR[2];
+    int32_t cur_2, cur_3, cur_4, cur_5, cur_6;
+    bool ok =
+        ARM_dxl.getPresentPosition(cur_1LR) == 0 &&
+        ARM_mot_2.getPresentPosition(cur_2) == 0 &&
+        ARM_mot_3.getPresentPosition(cur_3) == 0 &&
+        ARM_mot_4.getPresentPosition(cur_4) == 0 &&
+        ARM_mot_5.getPresentPosition(cur_5) == 0 &&
+        ARM_mot_6.getPresentPosition(cur_6) == 0;
+
+    if (!ok) {
+        Debug.log(Level::LOG_WARN, "[ARM_INIT] Position read failed — torque not enabled\n");
+        return;
+    }
+
+    // Pre-load goal = current so motors hold position when torque enables
+    ARM_dxl.setGoalPosition_EPCM(cur_1LR);
+    ARM_mot_2.setGoalPosition_EPCM(cur_2);
+    ARM_mot_3.setGoalPosition_EPCM(cur_3);
+    ARM_mot_4.setGoalPosition_EPCM(cur_4);
+    ARM_mot_5.setGoalPosition_EPCM(cur_5);
+    ARM_mot_6.setGoalPosition_EPCM(cur_6);
+    HAL_Delay(10U);
+
+    // Enable torque
+    ARM_mot_1a.setTorqueEnable(true);
+    ARM_mot_1b.setTorqueEnable(true);
+    ARM_mot_2.setTorqueEnable(true);
+    ARM_mot_3.setTorqueEnable(true);
+    ARM_mot_4.setTorqueEnable(true);
+    ARM_mot_5.setTorqueEnable(true);
+    ARM_mot_6.setTorqueEnable(true);
+
+    // Reset home positions to compiled defaults
+    // TODO (Issue #14): load from Flash if a valid saved home exists
+    const int32_t defaults[] = ARM_DEFAULT_HOME;
+    ARM_pos0_mot_1LR[0] = defaults[0];
+    ARM_pos0_mot_1LR[1] = defaults[1];
+    ARM_pos0_mot_2  = defaults[2];
+    ARM_pos0_mot_3  = defaults[3];
+    ARM_pos0_mot_4  = defaults[4];
+    ARM_pos0_mot_5  = defaults[5];
+    ARM_pos0_mot_6  = defaults[6];
+
+    Debug.log(Level::LOG_INFO, "[ARM_INIT] Arm DXL initialised\n");
+}
+#endif // MODC_ARM
+
+#ifdef MODC_JOINT
+/**
+ * Initialise all 3 joint Dynamixel motors on USART3.
+ * Must be called at startup. Mirrors MODC_ARM_INIT() pattern.
+ */
+static void DXL_JOINT_INIT(void)
+{
+    JOINT_dxl.begin();
+    JOINT_mot_1L.begin();
+    JOINT_mot_1R.begin();
+    JOINT_mot_2.begin();
+
+    JOINT_mot_1L.setTorqueEnable(false);
+    JOINT_mot_1R.setTorqueEnable(false);
+    JOINT_mot_2.setTorqueEnable(false);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setStatusReturnLevel(2U);
+    JOINT_mot_1R.setStatusReturnLevel(2U);
+    JOINT_mot_2.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
+
+    JOINT_dxl.enableSync(joint_ids, sizeof(joint_ids));
+
+    JOINT_mot_1L.setDriveMode(false, false, false);
+    JOINT_mot_1R.setDriveMode(false, false, false);
+    JOINT_mot_2.setDriveMode(false, false, false);
+
+    JOINT_mot_1L.setOperatingMode(4U);
+    JOINT_mot_1R.setOperatingMode(4U);
+    JOINT_mot_2.setOperatingMode(4U);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_1L.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    JOINT_mot_1R.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_1R.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    JOINT_mot_2.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    HAL_Delay(10U);
+
+    int32_t cur_1LR[2];
+    int32_t cur_2;
+    bool ok =
+        JOINT_dxl.getPresentPosition(cur_1LR) == 0 &&
+        JOINT_mot_2.getPresentPosition(cur_2) == 0;
+
+    if (!ok) {
+        Debug.log(Level::LOG_WARN, "[JOINT_INIT] Position read failed — torque not enabled\n");
+        return;
+    }
+
+    JOINT_dxl.setGoalPosition_EPCM(cur_1LR);
+    JOINT_mot_2.setGoalPosition_EPCM(cur_2);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setTorqueEnable(true);
+    JOINT_mot_1R.setTorqueEnable(true);
+    JOINT_mot_2.setTorqueEnable(true);
+
+    // Reset home positions to zero
+    JOINT_pos0_mot_1LR[0] = 0;
+    JOINT_pos0_mot_1LR[1] = 0;
+    JOINT_pos0_mot_2      = 0;
+
+    Debug.log(Level::LOG_INFO, "[JOINT_INIT] Joint DXL initialised\n");
+}
+#endif // MODC_JOINT
+
 /**
  * Send telemetry CAN frames. Populated fully in Issue #12.
  * Stub: reads encoder/IMU data and transmits on the CAN bus.
@@ -584,9 +783,9 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_mot_4.reboot();
         ARM_mot_5.reboot();
         ARM_mot_6.reboot();
-
-        // TODO: call MODC_ARM_INIT() here after reboot
-        Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted\n");
+        HAL_Delay(2000U);   // Wait for motors to come back online (~1.5 s typical)
+        DXL_ARM_INIT();
+        Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
         break;
     }
 
