@@ -43,6 +43,9 @@
 #include "AbsoluteEncoder.h"
 #include "IMU.h"
 #include "Battery.h"
+
+#include <cstring>   // memcpy
+#include <cstdlib>   // abs (integer)
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -101,6 +104,59 @@ static AbsoluteEncoder encoderYaw(ABSOLUTE_ENCODER_ADDRESS);
 static IMU imu;
 #endif
 
+#ifdef MODC_ARM
+// Arm Dynamixel motors (all on USART2 bus, position control)
+static DynamixelLL ARM_dxl(USART2, 0);                              // sync handle for J1a/J1b
+static DynamixelLL ARM_mot_1a(USART2, SERVO_ARM_1a_PITCH_ID);
+static DynamixelLL ARM_mot_1b(USART2, SERVO_ARM_1b_PITCH_ID);
+static DynamixelLL ARM_mot_2(USART2,  SERVO_ARM_2_PITCH_ID);
+static DynamixelLL ARM_mot_3(USART2,  SERVO_ARM_3_ROLL_ID);
+static DynamixelLL ARM_mot_4(USART2,  SERVO_ARM_4_PITCH_ID);
+static DynamixelLL ARM_mot_5(USART2,  SERVO_ARM_5_ROLL_ID);
+static DynamixelLL ARM_mot_6(USART2,  SERVO_ARM_6_BEAK_ID);
+static const uint8_t arm_ids[] = {SERVO_ARM_1a_PITCH_ID, SERVO_ARM_1b_PITCH_ID};
+
+// Arm home positions (DXL ext-pos units) — default from definitions.h ARM_DEFAULT_HOME
+static const int32_t arm_defaults[] = ARM_DEFAULT_HOME;
+static int32_t ARM_pos0_mot_1LR[2] = {arm_defaults[0], arm_defaults[1]};
+static int32_t ARM_pos0_mot_2  = arm_defaults[2];
+static int32_t ARM_pos0_mot_3  = arm_defaults[3];
+static int32_t ARM_pos0_mot_4  = arm_defaults[4];
+static int32_t ARM_pos0_mot_5  = arm_defaults[5];
+static int32_t ARM_pos0_mot_6  = arm_defaults[6];
+
+// Arm live setpoint state
+static int32_t ARM_pos_mot_1LR[2] = {0, 0};
+static int32_t ARM_old_pos_mot_1LR[2] = {0, 0};
+static int32_t ARM_pos_mot_2 = 0, ARM_old_pos_mot_2 = 0;
+static int32_t ARM_pos_mot_3 = 0, ARM_old_pos_mot_3 = 0;
+static int32_t ARM_pos_mot_4 = 0, ARM_old_pos_mot_4 = 0;
+static int32_t ARM_pos_mot_5 = 0, ARM_old_pos_mot_5 = 0;
+static int32_t ARM_pos_mot_6 = 0, ARM_old_pos_mot_6 = 0;
+
+// Beak gripper state machine
+static BeakState beak_state = BeakState::IDLE;
+static uint32_t  beak_motion_start_ms = 0U;
+#endif
+
+#ifdef MODC_JOINT
+// Joint Dynamixel motors (USART3 bus)
+static DynamixelLL JOINT_dxl(USART3,  0);                             // sync handle for pitch 1a/1b
+static DynamixelLL JOINT_mot_1L(USART3, SERVO_JOINT_LEFT_ID);
+static DynamixelLL JOINT_mot_1R(USART3, SERVO_JOINT_RIGHT_ID);
+static DynamixelLL JOINT_mot_2(USART3,  SERVO_JOINT_ROLL_ID);
+static const uint8_t joint_ids[] = {SERVO_JOINT_LEFT_ID, SERVO_JOINT_RIGHT_ID};
+
+// Joint home positions
+static int32_t JOINT_pos0_mot_1LR[2] = {0, 0};
+static int32_t JOINT_pos0_mot_2 = 0;
+
+// Joint live setpoint state
+static int32_t JOINT_pos_mot_1LR[2] = {0, 0};
+static int32_t JOINT_old_pos_mot_1LR[2] = {0, 0};
+static int32_t JOINT_pos_mot_2 = 0;
+#endif
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -110,6 +166,12 @@ extern "C" int  main(void);
 static void sendFeedback(void);
 static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data);
 static void DXL_TRACTION_INIT(void);
+#ifdef MODC_ARM
+static void DXL_ARM_INIT(void);
+#endif
+#ifdef MODC_JOINT
+static void DXL_JOINT_INIT(void);
+#endif
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -177,6 +239,16 @@ extern "C" int main(void)
   // DXL traction — USART2 DE pin + Dynamixel boot sequence
   DXL_TRACTION_INIT();
   Debug.log(Level::LOG_INFO, "[main] Traction DXL ready\n");
+
+#ifdef MODC_ARM
+  DXL_ARM_INIT();
+  Debug.log(Level::LOG_INFO, "[main] Arm DXL ready\n");
+#endif
+
+#ifdef MODC_JOINT
+  DXL_JOINT_INIT();
+  Debug.log(Level::LOG_INFO, "[main] Joint DXL ready\n");
+#endif
 
   // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
 #ifdef MODC_YAW
@@ -353,6 +425,201 @@ static void DXL_TRACTION_INIT(void)
     mot_right.setTorqueEnable(true);
 }
 
+#ifdef MODC_ARM
+/**
+ * Initialise all 7 arm Dynamixel motors on USART2.
+ * Must be called at startup and after REBOOT_ARM.
+ * Mirrors PicoLowLevel MODC_ARM_INIT(): enables DE mode, configures sync group,
+ * drive modes, extended-position operating mode, profiles, then enables torque.
+ */
+static void DXL_ARM_INIT(void)
+{
+    // Enable RS-485 DE mode on USART2 (idempotent — traction already called begin())
+    ARM_dxl.begin();
+    ARM_mot_1a.begin();
+    ARM_mot_1b.begin();
+    ARM_mot_2.begin();
+    ARM_mot_3.begin();
+    ARM_mot_4.begin();
+    ARM_mot_5.begin();
+    ARM_mot_6.begin();
+
+    // Disable torque for safe reconfiguration
+    ARM_mot_1a.setTorqueEnable(false);
+    ARM_mot_1b.setTorqueEnable(false);
+    ARM_mot_2.setTorqueEnable(false);
+    ARM_mot_3.setTorqueEnable(false);
+    ARM_mot_4.setTorqueEnable(false);
+    ARM_mot_5.setTorqueEnable(false);
+    ARM_mot_6.setTorqueEnable(false);
+    HAL_Delay(10U);
+
+    // Status return level 2 — respond to all instructions
+    ARM_mot_1a.setStatusReturnLevel(2U);
+    ARM_mot_1b.setStatusReturnLevel(2U);
+    ARM_mot_2.setStatusReturnLevel(2U);
+    ARM_mot_3.setStatusReturnLevel(2U);
+    ARM_mot_4.setStatusReturnLevel(2U);
+    ARM_mot_5.setStatusReturnLevel(2U);
+    ARM_mot_6.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
+
+    // Register J1a/J1b as sync group for differential control
+    ARM_dxl.enableSync(arm_ids, sizeof(arm_ids));
+
+    // Drive mode: all arms — normal mode (no reverseMode, no time-based profile)
+    ARM_mot_1a.setDriveMode(false, false, false);
+    ARM_mot_1b.setDriveMode(false, false, false);
+    ARM_mot_2.setDriveMode(false, false, false);
+    ARM_mot_3.setDriveMode(false, false, false);
+    ARM_mot_4.setDriveMode(false, false, false);
+    ARM_mot_5.setDriveMode(false, false, false);
+    ARM_mot_6.setDriveMode(false, false, false);
+
+    // Operating mode 4 = Extended Position Control Mode
+    ARM_dxl.setOperatingMode(4U);
+    ARM_mot_2.setOperatingMode(4U);
+    ARM_mot_3.setOperatingMode(4U);
+    ARM_mot_4.setOperatingMode(4U);
+    ARM_mot_5.setOperatingMode(4U);
+    ARM_mot_6.setOperatingMode(4U);
+    HAL_Delay(10U);
+
+    // Smooth motion profiles
+    ARM_mot_1a.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_1a.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_1b.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_1b.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_2.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_3.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_3.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_4.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_4.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_5.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_5.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    ARM_mot_6.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    ARM_mot_6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    HAL_Delay(10U);
+
+    // Read current positions before enabling torque to prevent violent startup motion
+    int32_t cur_1LR[2];
+    int32_t cur_2, cur_3, cur_4, cur_5, cur_6;
+    bool ok =
+        ARM_dxl.getPresentPosition(cur_1LR) == 0 &&
+        ARM_mot_2.getPresentPosition(cur_2) == 0 &&
+        ARM_mot_3.getPresentPosition(cur_3) == 0 &&
+        ARM_mot_4.getPresentPosition(cur_4) == 0 &&
+        ARM_mot_5.getPresentPosition(cur_5) == 0 &&
+        ARM_mot_6.getPresentPosition(cur_6) == 0;
+
+    if (!ok) {
+        Debug.log(Level::LOG_WARN, "[ARM_INIT] Position read failed — torque not enabled\n");
+        return;
+    }
+
+    // Pre-load goal = current so motors hold position when torque enables
+    ARM_dxl.setGoalPosition_EPCM(cur_1LR);
+    ARM_mot_2.setGoalPosition_EPCM(cur_2);
+    ARM_mot_3.setGoalPosition_EPCM(cur_3);
+    ARM_mot_4.setGoalPosition_EPCM(cur_4);
+    ARM_mot_5.setGoalPosition_EPCM(cur_5);
+    ARM_mot_6.setGoalPosition_EPCM(cur_6);
+    HAL_Delay(10U);
+
+    // Enable torque
+    ARM_mot_1a.setTorqueEnable(true);
+    ARM_mot_1b.setTorqueEnable(true);
+    ARM_mot_2.setTorqueEnable(true);
+    ARM_mot_3.setTorqueEnable(true);
+    ARM_mot_4.setTorqueEnable(true);
+    ARM_mot_5.setTorqueEnable(true);
+    ARM_mot_6.setTorqueEnable(true);
+
+    // Reset home positions to compiled defaults
+    // TODO (Issue #14): load from Flash if a valid saved home exists
+    const int32_t defaults[] = ARM_DEFAULT_HOME;
+    ARM_pos0_mot_1LR[0] = defaults[0];
+    ARM_pos0_mot_1LR[1] = defaults[1];
+    ARM_pos0_mot_2  = defaults[2];
+    ARM_pos0_mot_3  = defaults[3];
+    ARM_pos0_mot_4  = defaults[4];
+    ARM_pos0_mot_5  = defaults[5];
+    ARM_pos0_mot_6  = defaults[6];
+
+    Debug.log(Level::LOG_INFO, "[ARM_INIT] Arm DXL initialised\n");
+}
+#endif // MODC_ARM
+
+#ifdef MODC_JOINT
+/**
+ * Initialise all 3 joint Dynamixel motors on USART3.
+ * Must be called at startup. Mirrors MODC_ARM_INIT() pattern.
+ */
+static void DXL_JOINT_INIT(void)
+{
+    JOINT_dxl.begin();
+    JOINT_mot_1L.begin();
+    JOINT_mot_1R.begin();
+    JOINT_mot_2.begin();
+
+    JOINT_mot_1L.setTorqueEnable(false);
+    JOINT_mot_1R.setTorqueEnable(false);
+    JOINT_mot_2.setTorqueEnable(false);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setStatusReturnLevel(2U);
+    JOINT_mot_1R.setStatusReturnLevel(2U);
+    JOINT_mot_2.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
+
+    JOINT_dxl.enableSync(joint_ids, sizeof(joint_ids));
+
+    JOINT_mot_1L.setDriveMode(false, false, false);
+    JOINT_mot_1R.setDriveMode(false, false, false);
+    JOINT_mot_2.setDriveMode(false, false, false);
+
+    JOINT_mot_1L.setOperatingMode(4U);
+    JOINT_mot_1R.setOperatingMode(4U);
+    JOINT_mot_2.setOperatingMode(4U);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_1L.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    JOINT_mot_1R.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_1R.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    JOINT_mot_2.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    JOINT_mot_2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    HAL_Delay(10U);
+
+    int32_t cur_1LR[2];
+    int32_t cur_2;
+    bool ok =
+        JOINT_dxl.getPresentPosition(cur_1LR) == 0 &&
+        JOINT_mot_2.getPresentPosition(cur_2) == 0;
+
+    if (!ok) {
+        Debug.log(Level::LOG_WARN, "[JOINT_INIT] Position read failed — torque not enabled\n");
+        return;
+    }
+
+    JOINT_dxl.setGoalPosition_EPCM(cur_1LR);
+    JOINT_mot_2.setGoalPosition_EPCM(cur_2);
+    HAL_Delay(10U);
+
+    JOINT_mot_1L.setTorqueEnable(true);
+    JOINT_mot_1R.setTorqueEnable(true);
+    JOINT_mot_2.setTorqueEnable(true);
+
+    // Reset home positions to zero
+    JOINT_pos0_mot_1LR[0] = 0;
+    JOINT_pos0_mot_1LR[1] = 0;
+    JOINT_pos0_mot_2      = 0;
+
+    Debug.log(Level::LOG_INFO, "[JOINT_INIT] Joint DXL initialised\n");
+}
+#endif // MODC_JOINT
+
 /**
  * Send telemetry CAN frames. Populated fully in Issue #12.
  * Stub: reads encoder/IMU data and transmits on the CAN bus.
@@ -370,9 +637,229 @@ static void sendFeedback(void)
  */
 static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
 {
-    /* TODO (Issue #11): decode CAN setpoint and drive motors/servos */
-    (void)msg_id;
-    (void)msg_data;
+    switch (msg_id)
+    {
+    // Traction motors — all modules
+    case MOTOR_SETPOINT:
+    {
+        // Payload layout matches PicoLowLevel: bytes[0:3]=right RPM, bytes[4:7]=left RPM.
+        // speeds_dxl[0]=left, speeds_dxl[1]=right (matches traction sync-write order).
+        memcpy(&speeds_dxl[0], msg_data,     4);   // right → index 0 → motor 212
+        memcpy(&speeds_dxl[1], msg_data + 4, 4);   // left  → index 1 → motor 114
+
+        float coeff = ((speeds_dxl[0] + speeds_dxl[1]) < 0.0f)
+            ? TRACTION_VELOCITY_COEFF_REV
+            : TRACTION_VELOCITY_COEFF;
+        speeds_dxl[0] *= coeff;
+        speeds_dxl[1] *= coeff;
+
+        float goal[2] = {speeds_dxl[0], speeds_dxl[1]};
+        dxl_traction.setGoalVelocity_RPM(goal);
+        Debug.log(Level::LOG_DEBUG, "[CAN] MOTOR_SETPOINT: L=%.1f R=%.1f RPM\n",
+                  speeds_dxl[0], speeds_dxl[1]);
+        break;
+    }
+
+#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only
+    case ARM_PITCH_1a1b_SETPOINT:
+    {
+        float theta, phi;
+        memcpy(&theta, msg_data,     4);
+        memcpy(&phi,   msg_data + 4, 4);
+
+        ARM_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[0];
+        ARM_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[1];
+
+        if ((abs(ARM_pos_mot_1LR[0] - ARM_old_pos_mot_1LR[0]) > ARM_DE_CAN_DXL) ||
+            (abs(ARM_pos_mot_1LR[1] - ARM_old_pos_mot_1LR[1]) > ARM_DE_CAN_DXL))
+        {
+            ARM_dxl.setGoalPosition_EPCM(ARM_pos_mot_1LR);
+            ARM_old_pos_mot_1LR[0] = ARM_pos_mot_1LR[0];
+            ARM_old_pos_mot_1LR[1] = ARM_pos_mot_1LR[1];
+        }
+        break;
+    }
+
+    case ARM_PITCH_2_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_2 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_2;
+        if (abs(ARM_pos_mot_2 - ARM_old_pos_mot_2) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_2.setGoalPosition_EPCM(ARM_pos_mot_2);
+            ARM_old_pos_mot_2 = ARM_pos_mot_2;
+        }
+        break;
+    }
+
+    case ARM_ROLL_3_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_3 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_3;
+        if (abs(ARM_pos_mot_3 - ARM_old_pos_mot_3) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_3.setGoalPosition_EPCM(ARM_pos_mot_3);
+            ARM_old_pos_mot_3 = ARM_pos_mot_3;
+        }
+        break;
+    }
+
+    case ARM_PITCH_4_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_4 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_4;
+        if (abs(ARM_pos_mot_4 - ARM_old_pos_mot_4) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_4.setGoalPosition_EPCM(ARM_pos_mot_4);
+            ARM_old_pos_mot_4 = ARM_pos_mot_4;
+        }
+        break;
+    }
+
+    case ARM_ROLL_5_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        // J5 is mounted inverted — negate offset
+        ARM_pos_mot_5 = ARM_pos0_mot_5 - (int32_t)(val * RAD_TO_DXL);
+        if (abs(ARM_pos_mot_5 - ARM_old_pos_mot_5) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_5.setGoalPosition_EPCM(ARM_pos_mot_5);
+            ARM_old_pos_mot_5 = ARM_pos_mot_5;
+        }
+        break;
+    }
+
+    case ARM_ROLL_6_SETPOINT:
+    {
+        int32_t cmd;
+        memcpy(&cmd, msg_data, 4);
+        if (cmd == 0)
+        {
+            ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
+            ARM_mot_6.setGoalPosition_EPCM(BEAK_POS_CLOSE);
+            beak_motion_start_ms = HAL_GetTick();
+            beak_state = BeakState::CLOSING;
+        }
+        else if (cmd == 1)
+        {
+            ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
+            ARM_mot_6.setGoalPosition_EPCM(BEAK_POS_OPEN);
+            beak_motion_start_ms = HAL_GetTick();
+            beak_state = BeakState::OPENING;
+        }
+        break;
+    }
+
+    case RESET_ARM:
+    {
+        // Move all joints to home position
+        ARM_dxl.setGoalPosition_EPCM(ARM_pos0_mot_1LR);
+        ARM_mot_2.setGoalPosition_EPCM(ARM_pos0_mot_2);
+        ARM_mot_3.setGoalPosition_EPCM(ARM_pos0_mot_3);
+        ARM_mot_4.setGoalPosition_EPCM(ARM_pos0_mot_4);
+        ARM_mot_5.setGoalPosition_EPCM(ARM_pos0_mot_5);
+        ARM_mot_6.setGoalPosition_EPCM(ARM_pos0_mot_6);
+        ARM_old_pos_mot_1LR[0] = ARM_pos0_mot_1LR[0];
+        ARM_old_pos_mot_1LR[1] = ARM_pos0_mot_1LR[1];
+        ARM_old_pos_mot_2 = ARM_pos0_mot_2;
+        ARM_old_pos_mot_3 = ARM_pos0_mot_3;
+        ARM_old_pos_mot_4 = ARM_pos0_mot_4;
+        ARM_old_pos_mot_5 = ARM_pos0_mot_5;
+        ARM_old_pos_mot_6 = ARM_pos0_mot_6;
+        Debug.log(Level::LOG_INFO, "[CAN] RESET_ARM: moving to home\n");
+        break;
+    }
+
+    case REBOOT_ARM:
+    {
+        ARM_mot_1a.reboot();
+        ARM_mot_1b.reboot();
+        ARM_mot_2.reboot();
+        ARM_mot_3.reboot();
+        ARM_mot_4.reboot();
+        ARM_mot_5.reboot();
+        ARM_mot_6.reboot();
+        HAL_Delay(2000U);   // Wait for motors to come back online (~1.5 s typical)
+        DXL_ARM_INIT();
+        Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
+        break;
+    }
+
+    case SET_HOME:
+    {
+        // msg_data[0]: 0 = session only, 1 = persist to Flash
+        ARM_dxl.getPresentPosition(ARM_pos0_mot_1LR);
+        ARM_mot_2.getPresentPosition(ARM_pos0_mot_2);
+        ARM_mot_3.getPresentPosition(ARM_pos0_mot_3);
+        ARM_mot_4.getPresentPosition(ARM_pos0_mot_4);
+        ARM_mot_5.getPresentPosition(ARM_pos0_mot_5);
+        ARM_mot_6.getPresentPosition(ARM_pos0_mot_6);
+
+        ARM_old_pos_mot_1LR[0] = ARM_pos0_mot_1LR[0];
+        ARM_old_pos_mot_1LR[1] = ARM_pos0_mot_1LR[1];
+        ARM_old_pos_mot_2 = ARM_pos0_mot_2;
+        ARM_old_pos_mot_3 = ARM_pos0_mot_3;
+        ARM_old_pos_mot_4 = ARM_pos0_mot_4;
+        ARM_old_pos_mot_5 = ARM_pos0_mot_5;
+        ARM_old_pos_mot_6 = ARM_pos0_mot_6;  // beak home also reset
+
+        if (msg_data[0] == 1U)
+        {
+            // TODO (Issue #14): persist home positions to Flash
+            Debug.log(Level::LOG_INFO, "[CAN] SET_HOME: Flash persistence pending Issue #14\n");
+        }
+        else
+        {
+            Debug.log(Level::LOG_INFO, "[CAN] SET_HOME: session home updated\n");
+        }
+        break;
+    }
+#endif // MODC_ARM
+
+
+#ifdef MODC_JOINT // Inter-module joint — MODC_JOINT modules only
+    case JOINT_PITCH_1a1b_SETPOINT:
+    {
+        float theta, phi;
+        memcpy(&theta, msg_data,     4);
+        memcpy(&phi,   msg_data + 4, 4);
+
+        JOINT_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + JOINT_pos0_mot_1LR[0];
+        JOINT_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + JOINT_pos0_mot_1LR[1];
+
+        JOINT_dxl.setGoalPosition_EPCM(JOINT_pos_mot_1LR);
+        JOINT_old_pos_mot_1LR[0] = JOINT_pos_mot_1LR[0];
+        JOINT_old_pos_mot_1LR[1] = JOINT_pos_mot_1LR[1];
+        break;
+    }
+
+    case JOINT_ROLL_2_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        JOINT_pos_mot_2 = JOINT_pos0_mot_2 + (int32_t)(val * RAD_TO_DXL);
+        JOINT_mot_2.setGoalPosition_EPCM(JOINT_pos_mot_2);
+        break;
+    }
+#endif // MODC_JOINT
+
+    // Traction reboot — all modules
+    case MOTOR_TRACTION_REBOOT:
+        mot_left.reboot();
+        mot_right.reboot();
+        HAL_Delay(2000U);   // Wait for motors to come back online (~1.5 s typical)
+        DXL_TRACTION_INIT();
+        Debug.log(Level::LOG_INFO, "[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
+        break;
+
+    default:
+        Debug.log(Level::LOG_DEBUG, "[CAN] Unknown msg_id: 0x%02X\n", msg_id);
+        break;
+    }
 }
 
 /* USER CODE END 4 */
