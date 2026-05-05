@@ -169,7 +169,7 @@ static void DXL_TRACTION_INIT(void);
 #ifdef MODC_ARM
 static void DXL_ARM_INIT(void);
 static bool loadHomePositions(void);
-static void saveHomePositions(void);
+static bool saveHomePositions(void);
 #endif
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
@@ -459,7 +459,7 @@ static bool loadHomePositions(void)
  * Write arm home positions to the last Flash page (HOME_FLASH_PAGE_ADDR).
  * Sequence: unlock → page erase → 4 × DWORD writes → lock.
  */
-static void saveHomePositions(void)
+static bool saveHomePositions(void)
 {
     // Pack 7 home positions + sentinel into 8-word (32-byte) buffer
     uint32_t buf[8];
@@ -486,7 +486,7 @@ static void saveHomePositions(void)
     {
         HAL_FLASH_Lock();
         Debug.log(Level::LOG_WARN, "[Flash] Erase failed (page error 0x%08lX)\n", pageError);
-        return;
+        return false;
     }
 
     // Write 4 DWORDs: each DWORD = two consecutive uint32_t values
@@ -501,12 +501,13 @@ static void saveHomePositions(void)
         {
             HAL_FLASH_Lock();
             Debug.log(Level::LOG_WARN, "[Flash] Write failed at offset %lu\n", i * 8U);
-            return;
+            return false;
         }
     }
 
     HAL_FLASH_Lock();
     Debug.log(Level::LOG_INFO, "[Flash] Home positions saved to Flash\n");
+    return true;
 }
 
 /**
@@ -595,7 +596,7 @@ static void DXL_ARM_INIT(void)
     ARM_pos0_mot_4  = arm_defaults[4];
     ARM_pos0_mot_5  = arm_defaults[5];
     ARM_pos0_mot_6  = arm_defaults[6];
-    loadHomePositions();  // overrides defaults if Flash contains a valid HOME_FLASH_MAGIC
+    (void)loadHomePositions();  // overrides defaults if Flash contains a valid HOME_FLASH_MAGIC
 
     // Read current positions before enabling torque to prevent violent startup motion
     int32_t cur_1LR[2];
@@ -1000,7 +1001,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
 
         if (msg_data[0] == 1U)
         {
-            saveHomePositions();
+            (void)saveHomePositions();
         }
         else
         {
