@@ -43,6 +43,9 @@
 #include "AbsoluteEncoder.h"
 #include "IMU.h"
 #include "Battery.h"
+
+#include <cstring>   // memcpy
+#include <cstdlib>   // abs (integer)
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -99,6 +102,59 @@ static AbsoluteEncoder encoderYaw(ABSOLUTE_ENCODER_ADDRESS);
 
 #ifdef MODC_IMU
 static IMU imu;
+#endif
+
+#ifdef MODC_ARM
+// Arm Dynamixel motors (all on USART2 bus, position control)
+static DynamixelLL ARM_dxl(USART2, 0);                              // sync handle for J1a/J1b
+static DynamixelLL ARM_mot_1a(USART2, SERVO_ARM_1a_PITCH_ID);
+static DynamixelLL ARM_mot_1b(USART2, SERVO_ARM_1b_PITCH_ID);
+static DynamixelLL ARM_mot_2(USART2,  SERVO_ARM_2_PITCH_ID);
+static DynamixelLL ARM_mot_3(USART2,  SERVO_ARM_3_ROLL_ID);
+static DynamixelLL ARM_mot_4(USART2,  SERVO_ARM_4_PITCH_ID);
+static DynamixelLL ARM_mot_5(USART2,  SERVO_ARM_5_ROLL_ID);
+static DynamixelLL ARM_mot_6(USART2,  SERVO_ARM_6_BEAK_ID);
+static const uint8_t arm_ids[] = {SERVO_ARM_1a_PITCH_ID, SERVO_ARM_1b_PITCH_ID};
+
+// Arm home positions (DXL ext-pos units) — default from definitions.h ARM_DEFAULT_HOME
+static const int32_t arm_defaults[] = ARM_DEFAULT_HOME;
+static int32_t ARM_pos0_mot_1LR[2] = {arm_defaults[0], arm_defaults[1]};
+static int32_t ARM_pos0_mot_2  = arm_defaults[2];
+static int32_t ARM_pos0_mot_3  = arm_defaults[3];
+static int32_t ARM_pos0_mot_4  = arm_defaults[4];
+static int32_t ARM_pos0_mot_5  = arm_defaults[5];
+static int32_t ARM_pos0_mot_6  = arm_defaults[6];
+
+// Arm live setpoint state
+static int32_t ARM_pos_mot_1LR[2] = {0, 0};
+static int32_t ARM_old_pos_mot_1LR[2] = {0, 0};
+static int32_t ARM_pos_mot_2 = 0, ARM_old_pos_mot_2 = 0;
+static int32_t ARM_pos_mot_3 = 0, ARM_old_pos_mot_3 = 0;
+static int32_t ARM_pos_mot_4 = 0, ARM_old_pos_mot_4 = 0;
+static int32_t ARM_pos_mot_5 = 0, ARM_old_pos_mot_5 = 0;
+static int32_t ARM_pos_mot_6 = 0, ARM_old_pos_mot_6 = 0;
+
+// Beak gripper state machine
+static BeakState beak_state = BeakState::IDLE;
+static uint32_t  beak_motion_start_ms = 0U;
+#endif
+
+#ifdef MODC_JOINT
+// Joint Dynamixel motors (USART3 bus)
+static DynamixelLL JOINT_dxl(USART3,  0);                             // sync handle for pitch 1a/1b
+static DynamixelLL JOINT_mot_1L(USART3, SERVO_JOINT_LEFT_ID);
+static DynamixelLL JOINT_mot_1R(USART3, SERVO_JOINT_RIGHT_ID);
+static DynamixelLL JOINT_mot_2(USART3,  SERVO_JOINT_ROLL_ID);
+static const uint8_t joint_ids[] = {SERVO_JOINT_LEFT_ID, SERVO_JOINT_RIGHT_ID};
+
+// Joint home positions
+static int32_t JOINT_pos0_mot_1LR[2] = {0, 0};
+static int32_t JOINT_pos0_mot_2 = 0;
+
+// Joint live setpoint state
+static int32_t JOINT_pos_mot_1LR[2] = {0, 0};
+static int32_t JOINT_old_pos_mot_1LR[2] = {0, 0};
+static int32_t JOINT_pos_mot_2 = 0;
 #endif
 
 /* USER CODE END PV */
@@ -177,6 +233,18 @@ extern "C" int main(void)
   // DXL traction — USART2 DE pin + Dynamixel boot sequence
   DXL_TRACTION_INIT();
   Debug.log(Level::LOG_INFO, "[main] Traction DXL ready\n");
+
+#ifdef MODC_ARM
+  // Arm DXL sync handle — register J1a/J1b motor IDs for sync-write
+  ARM_dxl.enableSync(arm_ids, sizeof(arm_ids));
+  Debug.log(Level::LOG_INFO, "[main] Arm sync handle configured\n");
+#endif
+
+#ifdef MODC_JOINT
+  // Joint DXL sync handle — register joint motor IDs for sync-write
+  JOINT_dxl.enableSync(joint_ids, sizeof(joint_ids));
+  Debug.log(Level::LOG_INFO, "[main] Joint sync handle configured\n");
+#endif
 
   // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
 #ifdef MODC_YAW
@@ -370,9 +438,225 @@ static void sendFeedback(void)
  */
 static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
 {
-    /* TODO (Issue #11): decode CAN setpoint and drive motors/servos */
-    (void)msg_id;
-    (void)msg_data;
+    switch (msg_id)
+    {
+    // Traction motors — all modules
+    case MOTOR_SETPOINT:
+    {
+        // Payload layout matches PicoLowLevel: bytes[0:3]=right RPM, bytes[4:7]=left RPM.
+        // speeds_dxl[0]=left, speeds_dxl[1]=right (matches traction sync-write order).
+        memcpy(&speeds_dxl[1], msg_data,     4);   // right
+        memcpy(&speeds_dxl[0], msg_data + 4, 4);   // left
+
+        float coeff = ((speeds_dxl[0] + speeds_dxl[1]) < 0.0f)
+            ? TRACTION_VELOCITY_COEFF_REV
+            : TRACTION_VELOCITY_COEFF;
+        speeds_dxl[0] *= coeff;
+        speeds_dxl[1] *= coeff;
+
+        float goal[2] = {speeds_dxl[0], speeds_dxl[1]};
+        dxl_traction.setGoalVelocity_RPM(goal);
+        Debug.log(Level::LOG_DEBUG, "[CAN] MOTOR_SETPOINT: L=%.1f R=%.1f RPM\n",
+                  speeds_dxl[0], speeds_dxl[1]);
+        break;
+    }
+
+#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only
+    case ARM_PITCH_1a1b_SETPOINT:
+    {
+        float theta, phi;
+        memcpy(&theta, msg_data,     4);
+        memcpy(&phi,   msg_data + 4, 4);
+
+        ARM_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[0];
+        ARM_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + ARM_pos0_mot_1LR[1];
+
+        if ((abs(ARM_pos_mot_1LR[0] - ARM_old_pos_mot_1LR[0]) > ARM_DE_CAN_DXL) ||
+            (abs(ARM_pos_mot_1LR[1] - ARM_old_pos_mot_1LR[1]) > ARM_DE_CAN_DXL))
+        {
+            ARM_dxl.setGoalPosition_EPCM(ARM_pos_mot_1LR);
+            ARM_old_pos_mot_1LR[0] = ARM_pos_mot_1LR[0];
+            ARM_old_pos_mot_1LR[1] = ARM_pos_mot_1LR[1];
+        }
+        break;
+    }
+
+    case ARM_PITCH_2_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_2 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_2;
+        if (abs(ARM_pos_mot_2 - ARM_old_pos_mot_2) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_2.setGoalPosition_EPCM(ARM_pos_mot_2);
+            ARM_old_pos_mot_2 = ARM_pos_mot_2;
+        }
+        break;
+    }
+
+    case ARM_ROLL_3_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_3 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_3;
+        if (abs(ARM_pos_mot_3 - ARM_old_pos_mot_3) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_3.setGoalPosition_EPCM(ARM_pos_mot_3);
+            ARM_old_pos_mot_3 = ARM_pos_mot_3;
+        }
+        break;
+    }
+
+    case ARM_PITCH_4_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        ARM_pos_mot_4 = (int32_t)(val * RAD_TO_DXL) + ARM_pos0_mot_4;
+        if (abs(ARM_pos_mot_4 - ARM_old_pos_mot_4) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_4.setGoalPosition_EPCM(ARM_pos_mot_4);
+            ARM_old_pos_mot_4 = ARM_pos_mot_4;
+        }
+        break;
+    }
+
+    case ARM_ROLL_5_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        // J5 is mounted inverted — negate offset
+        ARM_pos_mot_5 = ARM_pos0_mot_5 - (int32_t)(val * RAD_TO_DXL);
+        if (abs(ARM_pos_mot_5 - ARM_old_pos_mot_5) > ARM_DE_CAN_DXL)
+        {
+            ARM_mot_5.setGoalPosition_EPCM(ARM_pos_mot_5);
+            ARM_old_pos_mot_5 = ARM_pos_mot_5;
+        }
+        break;
+    }
+
+    case ARM_ROLL_6_SETPOINT:
+    {
+        int32_t cmd;
+        memcpy(&cmd, msg_data, 4);
+        if (cmd == 0)
+        {
+            ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
+            ARM_mot_6.setGoalPosition_EPCM(BEAK_POS_CLOSE);
+            beak_motion_start_ms = HAL_GetTick();
+            beak_state = BeakState::CLOSING;
+        }
+        else if (cmd == 1)
+        {
+            ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
+            ARM_mot_6.setGoalPosition_EPCM(BEAK_POS_OPEN);
+            beak_motion_start_ms = HAL_GetTick();
+            beak_state = BeakState::OPENING;
+        }
+        break;
+    }
+
+    case RESET_ARM:
+    {
+        // Move all joints to home position
+        ARM_dxl.setGoalPosition_EPCM(ARM_pos0_mot_1LR);
+        ARM_mot_2.setGoalPosition_EPCM(ARM_pos0_mot_2);
+        ARM_mot_3.setGoalPosition_EPCM(ARM_pos0_mot_3);
+        ARM_mot_4.setGoalPosition_EPCM(ARM_pos0_mot_4);
+        ARM_mot_5.setGoalPosition_EPCM(ARM_pos0_mot_5);
+        ARM_mot_6.setGoalPosition_EPCM(ARM_pos0_mot_6);
+        ARM_old_pos_mot_1LR[0] = ARM_pos0_mot_1LR[0];
+        ARM_old_pos_mot_1LR[1] = ARM_pos0_mot_1LR[1];
+        ARM_old_pos_mot_2 = ARM_pos0_mot_2;
+        ARM_old_pos_mot_3 = ARM_pos0_mot_3;
+        ARM_old_pos_mot_4 = ARM_pos0_mot_4;
+        ARM_old_pos_mot_5 = ARM_pos0_mot_5;
+        ARM_old_pos_mot_6 = ARM_pos0_mot_6;
+        Debug.log(Level::LOG_INFO, "[CAN] RESET_ARM: moving to home\n");
+        break;
+    }
+
+    case REBOOT_ARM:
+    {
+        ARM_mot_1a.reboot();
+        ARM_mot_1b.reboot();
+        ARM_mot_2.reboot();
+        ARM_mot_3.reboot();
+        ARM_mot_4.reboot();
+        ARM_mot_5.reboot();
+        ARM_mot_6.reboot();
+        Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted\n");
+        break;
+    }
+
+    case SET_HOME:
+    {
+        // msg_data[0]: 0 = session only, 1 = persist to Flash
+        ARM_dxl.getPresentPosition(ARM_pos0_mot_1LR);
+        ARM_mot_2.getPresentPosition(ARM_pos0_mot_2);
+        ARM_mot_3.getPresentPosition(ARM_pos0_mot_3);
+        ARM_mot_4.getPresentPosition(ARM_pos0_mot_4);
+        ARM_mot_5.getPresentPosition(ARM_pos0_mot_5);
+        ARM_mot_6.getPresentPosition(ARM_pos0_mot_6);
+
+        ARM_old_pos_mot_1LR[0] = ARM_pos0_mot_1LR[0];
+        ARM_old_pos_mot_1LR[1] = ARM_pos0_mot_1LR[1];
+        ARM_old_pos_mot_2 = ARM_pos0_mot_2;
+        ARM_old_pos_mot_3 = ARM_pos0_mot_3;
+        ARM_old_pos_mot_4 = ARM_pos0_mot_4;
+        ARM_old_pos_mot_5 = ARM_pos0_mot_5;
+
+        if (msg_data[0] == 1U)
+        {
+            // TODO (Issue #14): persist home positions to Flash
+            Debug.log(Level::LOG_INFO, "[CAN] SET_HOME: Flash persistence pending Issue #14\n");
+        }
+        else
+        {
+            Debug.log(Level::LOG_INFO, "[CAN] SET_HOME: session home updated\n");
+        }
+        break;
+    }
+#endif // MODC_ARM
+
+
+#ifdef MODC_JOINT // Inter-module joint — MODC_JOINT modules only
+    case JOINT_PITCH_1a1b_SETPOINT:
+    {
+        float theta, phi;
+        memcpy(&theta, msg_data,     4);
+        memcpy(&phi,   msg_data + 4, 4);
+
+        JOINT_pos_mot_1LR[0] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + JOINT_pos0_mot_1LR[0];
+        JOINT_pos_mot_1LR[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + JOINT_pos0_mot_1LR[1];
+
+        JOINT_dxl.setGoalPosition_EPCM(JOINT_pos_mot_1LR);
+        JOINT_old_pos_mot_1LR[0] = JOINT_pos_mot_1LR[0];
+        JOINT_old_pos_mot_1LR[1] = JOINT_pos_mot_1LR[1];
+        break;
+    }
+
+    case JOINT_ROLL_2_SETPOINT:
+    {
+        float val;
+        memcpy(&val, msg_data, 4);
+        JOINT_pos_mot_2 = JOINT_pos0_mot_2 + (int32_t)(val * RAD_TO_DXL);
+        JOINT_mot_2.setGoalPosition_EPCM(JOINT_pos_mot_2);
+        break;
+    }
+#endif // MODC_JOINT
+
+    // Traction reboot — all modules
+    case MOTOR_TRACTION_REBOOT:
+        mot_left.reboot();
+        mot_right.reboot();
+        DXL_TRACTION_INIT();
+        Debug.log(Level::LOG_INFO, "[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
+        break;
+
+    default:
+        Debug.log(Level::LOG_DEBUG, "[CAN] Unknown msg_id: 0x%02X\n", msg_id);
+        break;
+    }
 }
 
 /* USER CODE END 4 */
