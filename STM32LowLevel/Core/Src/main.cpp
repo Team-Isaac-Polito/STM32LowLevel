@@ -621,13 +621,118 @@ static void DXL_JOINT_INIT(void)
 #endif // MODC_JOINT
 
 /**
- * Send telemetry CAN frames. Populated fully in Issue #12.
- * Stub: reads encoder/IMU data and transmits on the CAN bus.
+ * Send telemetry CAN frames at DT_TEL cadence.
  */
 static void sendFeedback(void)
 {
-    /* TODO (Issue #12): build and send CAN telemetry frames */
-    (void)0;
+    // --- Traction (all modules) ---
+    float speed_fb[2] = {0.0f, 0.0f};
+    dxl_traction.getPresentVelocity_RPM(speed_fb);
+    uint8_t traction_frame[8];
+    memcpy(&traction_frame[0], &speed_fb[0], 4U);   // [0] = right (traction_ids[0] = 212)
+    memcpy(&traction_frame[4], &speed_fb[1], 4U);   // [1] = left  (traction_ids[1] = 114)
+    canW.sendMessage(MOTOR_FEEDBACK, traction_frame, 8U);
+
+    uint8_t err_traction[2] = {0U, 0U};
+    mot_right.getHardwareErrorStatus(err_traction[0]);
+    mot_left.getHardwareErrorStatus(err_traction[1]);
+    canW.sendMessage(MOTOR_TRACTION_ERROR_STATUS, err_traction, 2U);
+
+#ifdef MODC_YAW
+    float yaw_angle = encoderYaw.readAngle();
+    canW.sendMessage(JOINT_YAW_FEEDBACK, &yaw_angle, 4U);
+#endif
+
+#ifdef MODC_ARM
+    static constexpr float RPM_TO_RADS = 2.0f * 3.14159265f / 60.0f;
+
+    // Position feedback — delta from home, converted to radians
+    int32_t posf_1a1b[2];
+    ARM_dxl.getPresentPosition(posf_1a1b);
+    // Mirror PicoLowLevel convention: slot[0]=phi(negated), slot[1]=theta
+    float arm_phi   = -(float)(((posf_1a1b[0] - ARM_pos0_mot_1LR[0]) + (posf_1a1b[1] - ARM_pos0_mot_1LR[1])) / 2.0f) * DXL_TO_RAD;
+    float arm_theta = (float)(((posf_1a1b[1] - ARM_pos0_mot_1LR[1]) - (posf_1a1b[0] - ARM_pos0_mot_1LR[0])) / 2.0f) * DXL_TO_RAD;
+    float arm_1a1b_fb[2] = {arm_theta, arm_phi};
+    canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK, arm_1a1b_fb, 8U);
+
+    int32_t posf; float posf_rad;
+    ARM_mot_2.getPresentPosition(posf);
+    posf_rad = (float)(posf - ARM_pos0_mot_2) * DXL_TO_RAD;
+    canW.sendMessage(ARM_PITCH_2_FEEDBACK, &posf_rad, 4U);
+
+    ARM_mot_3.getPresentPosition(posf);
+    posf_rad = (float)(posf - ARM_pos0_mot_3) * DXL_TO_RAD;
+    canW.sendMessage(ARM_ROLL_3_FEEDBACK, &posf_rad, 4U);
+
+    ARM_mot_4.getPresentPosition(posf);
+    posf_rad = (float)(posf - ARM_pos0_mot_4) * DXL_TO_RAD;
+    canW.sendMessage(ARM_PITCH_4_FEEDBACK, &posf_rad, 4U);
+
+    ARM_mot_5.getPresentPosition(posf);
+    posf_rad = (float)(posf - ARM_pos0_mot_5) * DXL_TO_RAD;
+    canW.sendMessage(ARM_ROLL_5_FEEDBACK, &posf_rad, 4U);
+
+    ARM_mot_6.getPresentPosition(posf);
+    posf_rad = (float)(posf - ARM_pos0_mot_6) * DXL_TO_RAD;
+    canW.sendMessage(ARM_ROLL_6_FEEDBACK, &posf_rad, 4U);
+
+    // Velocity feedback (RPM → rad/s), same differential convention as position
+    float vel_1a1b[2] = {0.0f, 0.0f};
+    ARM_dxl.getPresentVelocity_RPM(vel_1a1b);
+    float arm_phi_vel   = -(vel_1a1b[0] + vel_1a1b[1]) * RPM_TO_RADS;
+    float arm_theta_vel =  (vel_1a1b[0] - vel_1a1b[1]) * RPM_TO_RADS;
+    float arm_1a1b_vel[2] = {arm_theta_vel, arm_phi_vel};
+    canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK_VEL, arm_1a1b_vel, 8U);
+
+    float vel;
+    ARM_mot_2.getPresentVelocity_RPM(vel); vel *= RPM_TO_RADS;
+    canW.sendMessage(ARM_PITCH_2_FEEDBACK_VEL, &vel, 4U);
+
+    ARM_mot_3.getPresentVelocity_RPM(vel); vel *= RPM_TO_RADS;
+    canW.sendMessage(ARM_ROLL_3_FEEDBACK_VEL, &vel, 4U);
+
+    ARM_mot_4.getPresentVelocity_RPM(vel); vel *= RPM_TO_RADS;
+    canW.sendMessage(ARM_PITCH_4_FEEDBACK_VEL, &vel, 4U);
+
+    ARM_mot_5.getPresentVelocity_RPM(vel); vel *= RPM_TO_RADS;
+    canW.sendMessage(ARM_ROLL_5_FEEDBACK_VEL, &vel, 4U);
+
+    ARM_mot_6.getPresentVelocity_RPM(vel); vel *= RPM_TO_RADS;
+    canW.sendMessage(ARM_ROLL_6_FEEDBACK_VEL, &vel, 4U);
+
+    // Hardware error status
+    uint8_t err_arm[7] = {0U, 0U, 0U, 0U, 0U, 0U, 0U};
+    ARM_mot_1a.getHardwareErrorStatus(err_arm[0]);
+    ARM_mot_1b.getHardwareErrorStatus(err_arm[1]);
+    ARM_mot_2.getHardwareErrorStatus(err_arm[2]);
+    ARM_mot_3.getHardwareErrorStatus(err_arm[3]);
+    ARM_mot_4.getHardwareErrorStatus(err_arm[4]);
+    ARM_mot_5.getHardwareErrorStatus(err_arm[5]);
+    ARM_mot_6.getHardwareErrorStatus(err_arm[6]);
+    canW.sendMessage(MOTOR_ARM_ERROR_STATUS, err_arm, 7U);
+#endif // MODC_ARM
+
+#ifdef MODC_IMU
+    imu.update();
+    float imu_roll  = imu.getRoll();
+    float imu_pitch = imu.getPitch();
+    canW.sendMessage(JOINT_ROLL_FEEDBACK, &imu_roll, 4U);
+    canW.sendMessage(JOINT_PITCH_FEEDBACK, &imu_pitch, 4U);
+#endif // MODC_IMU
+
+#ifdef MODC_JOINT
+    int32_t joint_posf_1a1b[2];
+    JOINT_dxl.getPresentPosition(joint_posf_1a1b);
+    float joint_theta = ((float)((joint_posf_1a1b[0] - JOINT_pos0_mot_1LR[0]) + (joint_posf_1a1b[1] - JOINT_pos0_mot_1LR[1])) / 2.0f) * DXL_TO_RAD;
+    float joint_phi   = ((float)((joint_posf_1a1b[0] - JOINT_pos0_mot_1LR[0]) - (joint_posf_1a1b[1] - JOINT_pos0_mot_1LR[1])) / 2.0f) * DXL_TO_RAD;
+    float joint_1a1b_fb[2] = {joint_theta, joint_phi};
+    canW.sendMessage(JOINT_PITCH_1a1b_FEEDBACK, joint_1a1b_fb, 8U);
+
+    int32_t joint_posf_2;
+    JOINT_mot_2.getPresentPosition(joint_posf_2);
+    float joint_posf_2_rad = (float)(joint_posf_2 - JOINT_pos0_mot_2) * DXL_TO_RAD;
+    canW.sendMessage(JOINT_ROLL_2_FEEDBACK, &joint_posf_2_rad, 4U);
+#endif // MODC_JOINT
 }
 
 /**
