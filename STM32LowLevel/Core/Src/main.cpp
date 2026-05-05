@@ -429,8 +429,8 @@ static void DXL_TRACTION_INIT(void)
 /**
  * Initialise all 7 arm Dynamixel motors on USART2.
  * Must be called at startup and after REBOOT_ARM.
- * Mirrors PicoLowLevel MODC_ARM_INIT(): enables DE mode, configures sync group,
- * drive modes, extended-position operating mode, profiles, then enables torque.
+ * Enables DE mode, configures sync group, drive modes,
+ * extended-position operating mode, profiles, then enables torque.
  */
 static void DXL_ARM_INIT(void)
 {
@@ -649,7 +649,7 @@ static void sendFeedback(void)
     // Position feedback — delta from home, converted to radians
     int32_t posf_1a1b[2];
     ARM_dxl.getPresentPosition(posf_1a1b);
-    // Mirror PicoLowLevel convention: slot[0]=phi(negated), slot[1]=theta
+    // slot[0]=phi(negated), slot[1]=theta
     float arm_phi   = -(float)(((posf_1a1b[0] - ARM_pos0_mot_1LR[0]) + (posf_1a1b[1] - ARM_pos0_mot_1LR[1])) / 2.0f) * DXL_TO_RAD;
     float arm_theta = (float)(((posf_1a1b[1] - ARM_pos0_mot_1LR[1]) - (posf_1a1b[0] - ARM_pos0_mot_1LR[0])) / 2.0f) * DXL_TO_RAD;
     float arm_1a1b_fb[2] = {arm_theta, arm_phi};
@@ -747,7 +747,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
     // Traction motors — all modules
     case MOTOR_SETPOINT:
     {
-        // Payload layout matches PicoLowLevel: bytes[0:3]=right RPM, bytes[4:7]=left RPM.
+        // Payload layout: bytes[0:3]=right RPM, bytes[4:7]=left RPM.
         // speeds_dxl[0]=left, speeds_dxl[1]=right (matches traction sync-write order).
         memcpy(&speeds_dxl[0], msg_data,     4);   // right → index 0 → motor 212
         memcpy(&speeds_dxl[1], msg_data + 4, 4);   // left  → index 1 → motor 114
