@@ -168,6 +168,8 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data);
 static void DXL_TRACTION_INIT(void);
 #ifdef MODC_ARM
 static void DXL_ARM_INIT(void);
+static bool loadHomePositions(void);
+static void saveHomePositions(void);
 #endif
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
@@ -427,6 +429,87 @@ static void DXL_TRACTION_INIT(void)
 
 #ifdef MODC_ARM
 /**
+ * Load arm home positions from the last Flash page (HOME_FLASH_PAGE_ADDR).
+ * Returns true and overwrites ARM_pos0_* if the magic sentinel is valid;
+ * returns false and leaves the compiled defaults untouched otherwise.
+ */
+static bool loadHomePositions(void)
+{
+    const uint32_t *p = reinterpret_cast<const uint32_t *>(HOME_FLASH_PAGE_ADDR);
+
+    if (p[7] != HOME_FLASH_MAGIC)
+    {
+        Debug.log(Level::LOG_INFO, "[Flash] No saved home — using compiled defaults\n");
+        return false;
+    }
+
+    ARM_pos0_mot_1LR[0] = static_cast<int32_t>(p[0]);
+    ARM_pos0_mot_1LR[1] = static_cast<int32_t>(p[1]);
+    ARM_pos0_mot_2       = static_cast<int32_t>(p[2]);
+    ARM_pos0_mot_3       = static_cast<int32_t>(p[3]);
+    ARM_pos0_mot_4       = static_cast<int32_t>(p[4]);
+    ARM_pos0_mot_5       = static_cast<int32_t>(p[5]);
+    ARM_pos0_mot_6       = static_cast<int32_t>(p[6]);
+
+    Debug.log(Level::LOG_INFO, "[Flash] Home positions loaded from Flash\n");
+    return true;
+}
+
+/**
+ * Write arm home positions to the last Flash page (HOME_FLASH_PAGE_ADDR).
+ * Sequence: unlock → page erase → 4 × DWORD writes → lock.
+ */
+static void saveHomePositions(void)
+{
+    // Pack 7 home positions + sentinel into 8-word (32-byte) buffer
+    uint32_t buf[8];
+    buf[0] = static_cast<uint32_t>(ARM_pos0_mot_1LR[0]);
+    buf[1] = static_cast<uint32_t>(ARM_pos0_mot_1LR[1]);
+    buf[2] = static_cast<uint32_t>(ARM_pos0_mot_2);
+    buf[3] = static_cast<uint32_t>(ARM_pos0_mot_3);
+    buf[4] = static_cast<uint32_t>(ARM_pos0_mot_4);
+    buf[5] = static_cast<uint32_t>(ARM_pos0_mot_5);
+    buf[6] = static_cast<uint32_t>(ARM_pos0_mot_6);
+    buf[7] = HOME_FLASH_MAGIC;
+
+    HAL_FLASH_Unlock();
+
+    // Erase the target page (Bank 2, page 127, 2 KB)
+    FLASH_EraseInitTypeDef eraseInit;
+    eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+    eraseInit.Banks     = HOME_FLASH_BANK;
+    eraseInit.Page      = HOME_FLASH_PAGE_NUM;
+    eraseInit.NbPages   = 1U;
+    uint32_t pageError  = 0U;
+
+    if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK)
+    {
+        HAL_FLASH_Lock();
+        Debug.log(Level::LOG_WARN, "[Flash] Erase failed (page error 0x%08lX)\n", pageError);
+        return;
+    }
+
+    // Write 4 DWORDs: each DWORD = two consecutive uint32_t values
+    // Little-endian: lower 32 bits → addr+0, upper 32 bits → addr+4
+    for (uint32_t i = 0U; i < 4U; i++)
+    {
+        uint64_t dword = static_cast<uint64_t>(buf[i * 2U])
+                       | (static_cast<uint64_t>(buf[i * 2U + 1U]) << 32U);
+        uint32_t addr  = HOME_FLASH_PAGE_ADDR + (i * 8U);
+
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr, dword) != HAL_OK)
+        {
+            HAL_FLASH_Lock();
+            Debug.log(Level::LOG_WARN, "[Flash] Write failed at offset %lu\n", i * 8U);
+            return;
+        }
+    }
+
+    HAL_FLASH_Lock();
+    Debug.log(Level::LOG_INFO, "[Flash] Home positions saved to Flash\n");
+}
+
+/**
  * Initialise all 7 arm Dynamixel motors on USART2.
  * Must be called at startup and after REBOOT_ARM.
  * Enables DE mode, configures sync group, drive modes,
@@ -502,6 +585,18 @@ static void DXL_ARM_INIT(void)
     ARM_mot_6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
     HAL_Delay(10U);
 
+    // Set home positions now — before the early-return path — so ARM_pos0_* is
+    // always in a deterministic state regardless of whether motors respond.
+    // Flash overrides compiled defaults if a valid HOME_FLASH_MAGIC sentinel exists.
+    ARM_pos0_mot_1LR[0] = arm_defaults[0];
+    ARM_pos0_mot_1LR[1] = arm_defaults[1];
+    ARM_pos0_mot_2  = arm_defaults[2];
+    ARM_pos0_mot_3  = arm_defaults[3];
+    ARM_pos0_mot_4  = arm_defaults[4];
+    ARM_pos0_mot_5  = arm_defaults[5];
+    ARM_pos0_mot_6  = arm_defaults[6];
+    loadHomePositions();  // overrides defaults if Flash contains a valid HOME_FLASH_MAGIC
+
     // Read current positions before enabling torque to prevent violent startup motion
     int32_t cur_1LR[2];
     int32_t cur_2, cur_3, cur_4, cur_5, cur_6;
@@ -535,17 +630,6 @@ static void DXL_ARM_INIT(void)
     ARM_mot_4.setTorqueEnable(true);
     ARM_mot_5.setTorqueEnable(true);
     ARM_mot_6.setTorqueEnable(true);
-
-    // Reset home positions to compiled defaults
-    // TODO (Issue #14): load from Flash if a valid saved home exists
-    const int32_t defaults[] = ARM_DEFAULT_HOME;
-    ARM_pos0_mot_1LR[0] = defaults[0];
-    ARM_pos0_mot_1LR[1] = defaults[1];
-    ARM_pos0_mot_2  = defaults[2];
-    ARM_pos0_mot_3  = defaults[3];
-    ARM_pos0_mot_4  = defaults[4];
-    ARM_pos0_mot_5  = defaults[5];
-    ARM_pos0_mot_6  = defaults[6];
 
     Debug.log(Level::LOG_INFO, "[ARM_INIT] Arm DXL initialised\n");
 }
@@ -889,6 +973,8 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_mot_5.reboot();
         ARM_mot_6.reboot();
         HAL_Delay(2000U);   // Wait for motors to come back online (~1.5 s typical)
+        // Note: session-only SET_HOME is discarded here; loadHomePositions() inside
+        // DXL_ARM_INIT() restores the last Flash-persisted home (or compiled defaults).
         DXL_ARM_INIT();
         Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
         break;
@@ -914,8 +1000,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
 
         if (msg_data[0] == 1U)
         {
-            // TODO (Issue #14): persist home positions to Flash
-            Debug.log(Level::LOG_INFO, "[CAN] SET_HOME: Flash persistence pending Issue #14\n");
+            saveHomePositions();
         }
         else
         {
