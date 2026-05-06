@@ -54,6 +54,9 @@
 // State machine for the beak/gripper motor (MODC_ARM only).
 enum class BeakState : uint8_t { IDLE, CLOSING, OPENING, HOLDING };
 
+// LED identifiers
+enum class Led : uint8_t { DXL = 0, CANBUS = 1, USR = 2, POWER = 3 };
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -92,8 +95,9 @@ static uint32_t time_tel  = 0U;
 static uint32_t time_data = 0U;
 static bool     can_active = false;
 
-// LED heartbeat
-static bool led_state = false;
+// LED state
+static bool     led_state          = false;  // USR heartbeat phase
+static uint32_t led_can_last_toggle = 0U;    // debounce timestamp for LED_CAN
 
 // Module-specific peripherals
 #ifdef MODC_YAW
@@ -180,6 +184,35 @@ static void DXL_JOINT_INIT(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static inline void led_set(Led led, bool state)
+{
+    GPIO_TypeDef *port;
+    uint32_t pin;
+    switch (led) {
+        case Led::DXL:    port = LED_DXL_GPIO_Port; pin = LED_DXL_Pin; break;
+        case Led::CANBUS: port = LED_CAN_GPIO_Port; pin = LED_CAN_Pin; break;
+        case Led::USR:    port = LED_USR_GPIO_Port; pin = LED_USR_Pin; break;
+        case Led::POWER:  port = LED_PWR_GPIO_Port; pin = LED_PWR_Pin; break;
+        default: return;
+    }
+    if (state) LL_GPIO_SetOutputPin(port, pin);
+    else       LL_GPIO_ResetOutputPin(port, pin);
+}
+
+static inline void led_toggle(Led led)
+{
+    GPIO_TypeDef *port;
+    uint32_t pin;
+    switch (led) {
+        case Led::DXL: port = LED_DXL_GPIO_Port; pin = LED_DXL_Pin; break;
+        case Led::CANBUS: port = LED_CAN_GPIO_Port; pin = LED_CAN_Pin; break;
+        case Led::USR: port = LED_USR_GPIO_Port; pin = LED_USR_Pin; break;
+        case Led::POWER: port = LED_PWR_GPIO_Port; pin = LED_PWR_Pin; break;
+        default: return;
+    }
+    LL_GPIO_TogglePin(port, pin);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -230,6 +263,10 @@ extern "C" int main(void)
   MX_I2C3_Init();
   MX_FDCAN2_Init();
   /* USER CODE BEGIN 2 */
+
+  // LEDs — power-on indicator and DXL activity hook
+  led_set(Led::POWER, true);
+  DynamixelLL::setActivityCallback([]() { led_toggle(Led::DXL); });
 
   // Debug — must be first so all subsequent prints reach the console
   Debug.setLevel(Level::LOG_INFO);
@@ -308,6 +345,11 @@ extern "C" int main(void)
         time_data = now;
         can_active = true;
         handleSetpoint(msg_id, msg_data);
+        // LED_CAN activity blink — debounced so individual frames stay visible
+        if (now - led_can_last_toggle >= 100U) {
+            led_toggle(Led::CANBUS);
+            led_can_last_toggle = now;
+        }
     } else if (can_active && (now - time_data > CAN_TIMEOUT)) {
         // CAN silence timeout — stop all motors
         can_active = false;
@@ -322,11 +364,11 @@ extern "C" int main(void)
     tickBeakStateMachine(now);
 #endif // MODC_ARM
 
-    // LED heartbeat (toggle every 500 ms)
+    // LED_USR heartbeat (toggle every 500 ms)
     if (now % 1000U < 500U) {
-        if (!led_state) { LL_GPIO_SetOutputPin(LED_USR_GPIO_Port, LED_USR_Pin); led_state = true; }
+        if (!led_state) { led_set(Led::USR, true);  led_state = true; }
     } else {
-        if ( led_state) { LL_GPIO_ResetOutputPin(LED_USR_GPIO_Port, LED_USR_Pin); led_state = false; }
+        if ( led_state) { led_set(Led::USR, false); led_state = false; }
     }
 
     /* USER CODE END WHILE */

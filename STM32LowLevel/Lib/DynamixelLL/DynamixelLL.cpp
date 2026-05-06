@@ -9,6 +9,8 @@
 #include <cstring>
 #include <cstdio>
 
+void (*DynamixelLL::_activityCb)(void) = nullptr;
+
 DynamixelLL::DynamixelLL(USART_TypeDef *usart, uint8_t servoID)
     : _usart(usart), _servoID(servoID)
 {}
@@ -349,6 +351,8 @@ bool DynamixelLL::sendPacket(const uint8_t *packet, uint16_t length)
     // Wait until transmission complete (TC flag)
     while (!LL_USART_IsActiveFlag_TC(_usart)) {}
 
+    if (_activityCb) _activityCb();
+
     return true;
 }
 
@@ -450,6 +454,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
     }
 
     result.valid = true;
+    if (_activityCb) _activityCb();
     return result;
 }
 
