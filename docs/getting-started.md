@@ -6,7 +6,7 @@ This document explains how to **set up your development environment**, **configu
 
 ## Prerequisites
 
-You need four tools on your system before you can build:
+You need four tools on your system before you can build. STM32CubeMX is optional and only needed for peripheral configuration.
 
 | Tool | Minimum version | Purpose |
 |---|---|---|
@@ -14,6 +14,7 @@ You need four tools on your system before you can build:
 | [Ninja](https://github.com/ninja-build/ninja/releases) | any recent | Fast build backend (required by `CMakePresets.json`) |
 | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) | 13.x or later | `arm-none-eabi-gcc` cross-compiler |
 | [Visual Studio Code](https://code.visualstudio.com/) | any | Editor |
+| [STM32CubeMX](https://www.st.com/en/development-tools/stm32cubemx.html) | any | *(Optional)* View/edit `.ioc` peripheral config |
 
 ---
 
@@ -80,7 +81,6 @@ Open VS Code and install:
 
 - **CMake Tools** (`ms-vscode.cmake-tools`) — configure and build from the sidebar
 - **C/C++** (`ms-vscode.cpptools`) — IntelliSense and navigation
-- **Cortex-Debug** (`marus25.cortex-debug`) — on-chip debugging (for later, once flashing is set up)
 
 ---
 
@@ -145,6 +145,20 @@ The three module configurations also have named presets in `CMakePresets.json`:
 cmake --preset MK2_MOD1   # configures + selects module in one step
 cmake --build build/Debug
 ```
+
+---
+
+## 7. (Optional) STM32CubeMX — viewing the .ioc file
+
+The project includes a `STM32LowLevel.ioc` file that describes all peripheral configurations (GPIO, USART, CAN, DMA, clocks, etc.). You don't need CubeMX to **build** or **flash** the firmware, but you do need it if you want to **view or modify** the peripheral setup and regenerate the LL/HAL init code.
+
+1. Download and install **STM32CubeMX** from the [ST website](https://www.st.com/en/development-tools/stm32cubemx.html).
+
+2. Open CubeMX and use **File → Load Project** and select the `STM32LowLevel.ioc` file, or double-click the `.ioc` file directly from Windows Explorer.
+
+3. To regenerate code after making changes, click the **Generate Code** button (gear icon in the toolbar).
+
+> **Note:** Code generation will overwrite auto-generated files such as `Core/Src/gpio.c` and `Core/Src/main.c`. Any changes made **outside** the `/* USER CODE BEGIN / END */` markers will be lost. The project is already fully configured; this step is only needed if you change peripheral assignments.
 
 ---
 
