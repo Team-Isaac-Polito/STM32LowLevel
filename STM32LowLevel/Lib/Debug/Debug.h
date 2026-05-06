@@ -21,11 +21,12 @@
  *
  * Only messages whose level is <= the active level are printed.
  */
-enum class Level : uint8_t {
-    LOG_OFF   = 0,
-    LOG_WARN  = 1,
-    LOG_INFO  = 2,
-    LOG_DEBUG = 3,
+enum class Level : uint8_t
+{
+    LogOff = 0,
+    LogWarn = 1,
+    LogInfo = 2,
+    LogDebug = 3,
 };
 
 /**
@@ -34,8 +35,9 @@ enum class Level : uint8_t {
  * Call Debug.setLevel() once at startup, then use Debug.log() throughout.
  * printf() is also routed through UART5 via the _write syscall retarget.
  */
-class SerialDebug {
-public:
+class SerialDebug
+{
+  public:
     /**
      * @brief Set the active log level. Messages above this level are suppressed.
      * @param lvl New active level (Level::LOG_OFF suppresses all output).
@@ -48,7 +50,7 @@ public:
      * @param fmt printf-style format string.
      * @param ... Format arguments.
      */
-    void log(Level lvl, const char *fmt, ...);
+    void log(Level lvl, const char* fmt, ...);
 
     /**
      * @brief va_list variant of log().
@@ -56,7 +58,7 @@ public:
      * @param fmt  printf-style format string.
      * @param args Pre-initialized va_list.
      */
-    void vlog(Level lvl, const char *fmt, va_list args);
+    void vlog(Level lvl, const char* fmt, va_list args);
 
     /**
      * @brief Transmit a single character over UART5 (blocking).
@@ -65,6 +67,6 @@ public:
     void putchar(char ch);
 };
 
-extern SerialDebug Debug;
+extern SerialDebug debug;
 
 #endif // DEBUG_H
