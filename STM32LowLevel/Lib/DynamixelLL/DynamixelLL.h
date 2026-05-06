@@ -502,6 +502,14 @@ public:
     template <uint8_t N>
     uint8_t getMovingStatus(DxlMovingStatus (&status)[N]);
 
+    /**
+     * @brief Register a callback invoked on every DXL TX (after TC) and every
+     *        valid RX (after CRC pass).  Pass nullptr to disable.
+     *
+     * Called from a blocking main-loop context — keep it short (e.g. GPIO toggle).
+     */
+    static void setActivityCallback(void (*cb)(void)) { _activityCb = cb; }
+
 private:
     USART_TypeDef *_usart;    //< USART peripheral
     uint8_t        _servoID;  //< Target servo ID
@@ -512,6 +520,8 @@ private:
 
     bool    _debug = false;   //< True if verbose debug logging is enabled.
     uint8_t _error = 0;       //< Last error byte received from a status packet.
+
+    static void (*_activityCb)(void);  //< Optional TX/RX activity hook (shared across all instances).
 
     /**
      * @brief Transmit a raw byte packet over the USART (blocking, LL).
