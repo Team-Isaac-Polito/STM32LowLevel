@@ -1,0 +1,38 @@
+---
+Checks: '-*,readability-identifier-naming'
+WarningsAsErrors: 'readability-identifier-naming'
+CheckOptions:
+  # Local variables and parameters: camelCase
+  - key: readability-identifier-naming.LocalVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.ParameterCase
+    value: camelBack
+  # Macros and compile-time constants: UPPER_SNAKE_CASE
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.MacroDefinitionPrefix
+    value: ''
+  # Member variables (private with underscore prefix are OK)
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberPrefix
+    value: '_'
+  # Global/static variables: camelCase
+  - key: readability-identifier-naming.StaticVariableCase
+    value: camelBack
+  - key: readability-identifier-naming.GlobalVariableCase
+    value: camelBack
+  # Functions
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  # Types / classes / enums: PascalCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  # Do not enforce constexpr / const global names (overlap with UPPER_CASE macros)
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: UPPER_CASE
+HeaderFilterRegex: '(Core/Src|Lib)/.*'

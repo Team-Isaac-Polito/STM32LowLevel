@@ -1,0 +1,45 @@
+name: Style
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  clang-format:
+    runs-on: ubuntu-latest
+    name: clang-format
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-19
+
+      - name: Check formatting
+        working-directory: STM32LowLevel
+        run: |
+          find Core/Src Lib \( -name "*.cpp" -o -name "*.h" -o -name "*.tpp" \) \
+            | xargs clang-format-19 --dry-run --Werror
+
+  clang-tidy:
+    runs-on: ubuntu-latest
+    name: clang-tidy (naming)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi clang-tidy-19
+
+      - name: Configure (generate compile_commands.json)
+        working-directory: STM32LowLevel
+        run: cmake --preset MK2_MOD1
+
+      - name: Check naming conventions
+        working-directory: STM32LowLevel
+        run: |
+          ARM_INC=$(arm-none-eabi-gcc -print-file-name=include)
+          find Core/Src Lib \( -name "*.cpp" \) \
+            | xargs clang-tidy-19 -p build/MK2_MOD1 --extra-arg="-I${ARM_INC}"
