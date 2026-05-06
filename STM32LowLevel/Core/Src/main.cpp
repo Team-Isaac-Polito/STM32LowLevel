@@ -132,11 +132,11 @@ static int32_t ARM_pos_mot_2 = 0, ARM_old_pos_mot_2 = 0;
 static int32_t ARM_pos_mot_3 = 0, ARM_old_pos_mot_3 = 0;
 static int32_t ARM_pos_mot_4 = 0, ARM_old_pos_mot_4 = 0;
 static int32_t ARM_pos_mot_5 = 0, ARM_old_pos_mot_5 = 0;
-static int32_t ARM_pos_mot_6 = 0, ARM_old_pos_mot_6 = 0;
 
 // Beak gripper state machine
 static BeakState beak_state = BeakState::IDLE;
 static uint32_t  beak_motion_start_ms = 0U;
+static uint32_t  beak_temp_check_ms   = 0U;  ///< Timestamp of last thermal check in HOLDING
 #endif
 
 #ifdef MODC_JOINT
@@ -170,6 +170,7 @@ static void DXL_TRACTION_INIT(void);
 static void DXL_ARM_INIT(void);
 static bool loadHomePositions(void);
 static bool saveHomePositions(void);
+static void tickBeakStateMachine(uint32_t now);
 #endif
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
@@ -315,6 +316,11 @@ extern "C" int main(void)
         dxl_traction.setGoalVelocity_RPM(speeds_dxl);
         Debug.log(Level::LOG_WARN, "[main] CAN timeout, motors stopped\n");
     }
+
+#ifdef MODC_ARM
+    // Beak gripper state machine
+    tickBeakStateMachine(now);
+#endif // MODC_ARM
 
     // LED heartbeat (toggle every 500 ms)
     if (now % 1000U < 500U) {
@@ -634,6 +640,81 @@ static void DXL_ARM_INIT(void)
 
     Debug.log(Level::LOG_INFO, "[ARM_INIT] Arm DXL initialised\n");
 }
+
+/**
+ * Advance the beak gripper state machine one step.
+ * Transitions: IDLE → CLOSING → HOLDING → OPENING → IDLE
+ * Thermal protection: every BEAK_TEMP_CHECK_MS ms in HOLDING,
+ * halves hold PWM if temp ≥ BEAK_TEMP_LIMIT; transitions to IDLE on HW error.
+ * @param now HAL_GetTick() snapshot from the current loop iteration.
+ */
+static void tickBeakStateMachine(uint32_t now)
+{
+    if (beak_state == BeakState::CLOSING)
+    {
+        int16_t load = 0;
+        int32_t pos  = 0;
+        ARM_mot_6.getCurrentLoad(load);
+        ARM_mot_6.getPresentPosition(pos);
+
+        bool loadDetected = abs(load) >= BEAK_LOAD_THRESHOLD;
+        bool posReached   = abs(pos - BEAK_POS_CLOSE) <= BEAK_POS_TOLERANCE;
+        bool timedOut     = (now - beak_motion_start_ms) > BEAK_TIMEOUT_MS;
+
+        if (loadDetected || posReached || timedOut)
+        {
+            // Freeze at current position and reduce PWM to hold gently
+            ARM_mot_6.getPresentPosition(pos);
+            ARM_mot_6.setGoalPosition_EPCM(pos);
+            ARM_mot_6.setGoalPWM(BEAK_HOLD_PWM);
+            beak_state         = BeakState::HOLDING;
+            beak_temp_check_ms = now;
+            Debug.log(Level::LOG_INFO, "[beak] CLOSING\xe2\x86\x92HOLDING%s\n",
+                      timedOut ? " (timeout)" : posReached ? " (pos)" : " (load)");
+        }
+    }
+    else if (beak_state == BeakState::OPENING)
+    {
+        int32_t pos = 0;
+        ARM_mot_6.getPresentPosition(pos);
+
+        bool posReached = abs(pos - BEAK_POS_OPEN) <= BEAK_POS_TOLERANCE;
+        bool timedOut   = (now - beak_motion_start_ms) > BEAK_TIMEOUT_MS;
+
+        if (posReached || timedOut)
+        {
+            ARM_mot_6.setGoalPosition_EPCM(pos);
+            ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
+            beak_state = BeakState::IDLE;
+            Debug.log(Level::LOG_INFO, "[beak] OPENING\xe2\x86\x92IDLE%s\n",
+                      timedOut ? " (timeout)" : " (pos)");
+        }
+    }
+    else if (beak_state == BeakState::HOLDING)
+    {
+        if ((now - beak_temp_check_ms) >= BEAK_TEMP_CHECK_MS)
+        {
+            beak_temp_check_ms = now;
+            uint8_t temp  = 0U;
+            uint8_t hwErr = 0U;
+            ARM_mot_6.getPresentTemperature(temp);
+            ARM_mot_6.getHardwareErrorStatus(hwErr);
+
+            if (temp >= BEAK_TEMP_LIMIT)
+            {
+                ARM_mot_6.setGoalPWM(BEAK_HOLD_PWM / 2);
+                Debug.log(Level::LOG_WARN, "[beak] Thermal: %u deg" "C >= %u deg" "C limit, PWM halved\n",
+                          temp, (uint8_t)BEAK_TEMP_LIMIT);
+            }
+            if (hwErr != 0U)
+            {
+                beak_state = BeakState::IDLE;
+                Debug.log(Level::LOG_WARN, "[beak] HW error 0x%02X in HOLDING \xe2\x86\x92 IDLE\n", hwErr);
+            }
+        }
+    }
+    // BeakState::IDLE — nothing to do
+}
 #endif // MODC_ARM
 
 #ifdef MODC_JOINT
@@ -952,14 +1033,15 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_mot_3.setGoalPosition_EPCM(ARM_pos0_mot_3);
         ARM_mot_4.setGoalPosition_EPCM(ARM_pos0_mot_4);
         ARM_mot_5.setGoalPosition_EPCM(ARM_pos0_mot_5);
+        ARM_mot_6.setGoalPWM(BEAK_FULL_PWM);
         ARM_mot_6.setGoalPosition_EPCM(ARM_pos0_mot_6);
+        beak_state = BeakState::IDLE;
         ARM_old_pos_mot_1LR[0] = ARM_pos0_mot_1LR[0];
         ARM_old_pos_mot_1LR[1] = ARM_pos0_mot_1LR[1];
         ARM_old_pos_mot_2 = ARM_pos0_mot_2;
         ARM_old_pos_mot_3 = ARM_pos0_mot_3;
         ARM_old_pos_mot_4 = ARM_pos0_mot_4;
         ARM_old_pos_mot_5 = ARM_pos0_mot_5;
-        ARM_old_pos_mot_6 = ARM_pos0_mot_6;
         Debug.log(Level::LOG_INFO, "[CAN] RESET_ARM: moving to home\n");
         break;
     }
@@ -977,6 +1059,7 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         // Note: session-only SET_HOME is discarded here; loadHomePositions() inside
         // DXL_ARM_INIT() restores the last Flash-persisted home (or compiled defaults).
         DXL_ARM_INIT();
+        beak_state = BeakState::IDLE;
         Debug.log(Level::LOG_INFO, "[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
         break;
     }
@@ -997,7 +1080,6 @@ static void handleSetpoint(uint8_t msg_id, const uint8_t *msg_data)
         ARM_old_pos_mot_3 = ARM_pos0_mot_3;
         ARM_old_pos_mot_4 = ARM_pos0_mot_4;
         ARM_old_pos_mot_5 = ARM_pos0_mot_5;
-        ARM_old_pos_mot_6 = ARM_pos0_mot_6;  // beak home also reset
 
         if (msg_data[0] == 1U)
         {
