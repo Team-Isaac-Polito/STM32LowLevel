@@ -1011,7 +1011,7 @@ static void sendFeedback(void)
 /**
  * Dispatch incoming CAN setpoint message. Populated fully in Issue #11.
  * @param msg_id   CAN message type identifier (bits[23:16] of extended ID).
- * @param msg_data 8-byte payload.
+ * @param msgData 8-byte payload.
  */
 static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 {
@@ -1171,7 +1171,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
         case SET_HOME:
         {
-            // msg_data[0]: 0 = session only, 1 = persist to Flash
+            // msgData[0]: 0 = session only, 1 = persist to Flash
             armDxl.getPresentPosition(armPos0Mot1Lr);
             armMot2.getPresentPosition(armPos0Mot2);
             armMot3.getPresentPosition(armPos0Mot3);
@@ -1198,8 +1198,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         case JOINT_PITCH_1a1b_SETPOINT:
         {
             float theta, phi;
-            memcpy(&theta, msg_data, 4);
-            memcpy(&phi, msg_data + 4, 4);
+            memcpy(&theta, msgData, 4);
+            memcpy(&phi, msgData + 4, 4);
 
             jointPosMot1Lr[0] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + jointPos0Mot1Lr[0];
             jointPosMot1Lr[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + jointPos0Mot1Lr[1];
@@ -1213,7 +1213,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         case JOINT_ROLL_2_SETPOINT:
         {
             float val;
-            memcpy(&val, msg_data, 4);
+            memcpy(&val, msgData, 4);
             jointPosMot2 = jointPos0Mot2 + (int32_t)(val * RAD_TO_DXL);
             jointMot2.setGoalPositionEpcm(jointPosMot2);
             break;

@@ -4,7 +4,7 @@
  */
 
 #include "DynamixelLL.h"
-#include "debug.h"
+#include "Debug.h"
 
 #include <cstring>
 #include <cstdio>

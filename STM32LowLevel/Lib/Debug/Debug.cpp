@@ -10,7 +10,7 @@
  * other newlib I/O function routes through UART5 automatically.
  */
 
-#include "debug.h"
+#include "Debug.h"
 
 #include <cstdio>
 #include <cstdarg>

@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi clang-tidy-19
+          sudo apt-get install -y cmake ninja-build gcc-arm-none-eabi libstdc++-arm-none-eabi-newlib clang-tidy-19
 
       - name: Configure (generate compile_commands.json)
         working-directory: STM32LowLevel
@@ -40,6 +40,12 @@ jobs:
       - name: Check naming conventions
         working-directory: STM32LowLevel
         run: |
-          ARM_INC=$(arm-none-eabi-gcc -print-file-name=include)
+          ARM_SYSROOT=$(arm-none-eabi-gcc -print-sysroot)
           find Core/Src Lib \( -name "*.cpp" \) \
-            | xargs clang-tidy-19 -p build/MK2_MOD1 --extra-arg="-I${ARM_INC}"
+            | xargs clang-tidy-19 -p build/MK2_MOD1 --extra-arg="--sysroot=${ARM_SYSROOT}" \
+            2>&1 | tee /tmp/tidy_out.txt || true
+          if grep -q "readability-identifier-naming" /tmp/tidy_out.txt; then
+            echo "::error::Naming convention violations found"
+            grep "readability-identifier-naming" /tmp/tidy_out.txt
+            exit 1
+          fi
