@@ -148,7 +148,39 @@ cmake --build build/Debug
 
 ---
 
-## 7. (Optional) STM32CubeMX — viewing the .ioc file
+## 7. Flashing
+
+**Note:** This flashing guide is written for the Linux/Ubuntu environment.
+
+For WSL users, you must first attach the physical USB device to your WSL instance using `usbipd` from an Administrator PowerShell prompt before running the flashing commands:
+```powershell
+# In Windows PowerShell (Admin)
+usbipd list                        # Find the Bus ID for "DFU in FS Mode" (typically 0483:df11)
+usbipd bind --busid <ID>           # Bind the device to WSL
+usbipd attach --wsl --busid <ID>   # Bind it to your active WSL instance
+```
+
+*See our outline documentation [Step 3: Setting Up USBIPD in PowerShell](https://docs.teamisaac.it/doc/kernel-and-usbipd-B5cYVhJ1Gv) for detailed setup instructions.*
+
+### Flashing Procedure
+
+Put your STM32G474RET6 board into DFU bootloader mode. Then, inside `STM32LowLevel/STM32LowLevel/`, run these commands sequentially:
+
+```bash
+# 1. Convert your compiled ELF to a raw uncompressed binary file
+arm-none-eabi-objcopy -O binary build/Debug/STM32LowLevel.elf build/Debug/STM32LowLevel.bin
+
+# 2. Flash the raw binary directly to the MCU internal flash memory
+dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D build/Debug/STM32LowLevel.bin
+```
+where:
+   - `0483:df11` (Vendor ID : Product ID): hardcoded USB identifier for the factory bootloader programmed by STMicroelectronics. This is the default DFU mode that all STM32G4 series chips enter when BOOT0 is tied high.
+   - `-a 0` (Alternate Setting 0): selects the first (and in this case, only) memory interface exposed by the bootloader, which maps directly to the main internal flash array.
+   - `0x08000000` (Memory Target Address): the base physical memory address where the internal flash begins on the ARM Cortex-M architecture. This tells `dfu-util` exactly where to write the raw binary payload since it contains no header information.
+
+---
+
+## 8. (Optional) STM32CubeMX — viewing the .ioc file
 
 The project includes a `STM32LowLevel.ioc` file that describes all peripheral configurations (GPIO, USART, CAN, DMA, clocks, etc.). You don't need CubeMX to **build** or **flash** the firmware, but you do need it if you want to **view or modify** the peripheral setup and regenerate the LL/HAL init code.
 
