@@ -19,8 +19,9 @@
 
 #include <cstdint>
 
-class CanWrapper {
-public:
+class CanWrapper
+{
+  public:
     CanWrapper() {}
 
     /**
@@ -44,7 +45,7 @@ public:
      * @param length  Payload length in bytes (max 8).
      * @return True if the message was placed in the TX FIFO, false if full.
      */
-    bool sendMessage(uint8_t msgType, const void *data, uint8_t length);
+    bool sendMessage(uint8_t msgType, const void* data, uint8_t length);
 
     /**
      * @brief Receive a CAN frame from RX FIFO 0 (register-level, non-blocking).
@@ -56,7 +57,7 @@ public:
      * @param[out] data    Pointer to a buffer of at least 8 bytes for payload.
      * @return True if a message was available and read, false if FIFO empty.
      */
-    bool readMessage(uint8_t *msgType, uint8_t *data);
+    bool readMessage(uint8_t* msgType, uint8_t* data);
 };
 
 #endif // CAN_WRAPPER_H

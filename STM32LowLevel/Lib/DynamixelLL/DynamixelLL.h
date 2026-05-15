@@ -4,7 +4,7 @@
  *
  * e-manual for DYNAMIXEL protocol 2.0: https://emanual.robotis.com/docs/en/dxl/protocol2/
  * e-Manual for DYNAMIXEL XL430-W250: https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/
- * 
+ *
  * Physical layer:
  *   - DXL Bus 1: USART2, PA2 TX (open-drain), PA1 DE, 4.5 Mbps half-duplex
  *   - DXL Bus 2: USART3, PB10 TX (open-drain), PB14 DE, 4.5 Mbps half-duplex
@@ -17,59 +17,61 @@
 
 #include "stm32g4xx_ll_usart.h"
 #include "stm32g4xx_ll_crc.h"
-#include "stm32g4xx_hal.h"  // HAL_GetTick() for timeouts
+#include "stm32g4xx_hal.h" // HAL_GetTick() for timeouts
 #include "Debug.h"
 
-
+// clang-format off
 // Instruction codes
-#define DXL_INST_PING          0x01u  //< Instruction that checks whether the Packet has arrived at a device with the same ID as the specified packet ID
-#define DXL_INST_READ          0x02u  //< Instruction to read data from the Device
-#define DXL_INST_WRITE         0x03u  //< Instruction to write data to the Device
-#define DXL_INST_FACTORY_RESET 0x06u  //< Instruction that resets the Control Table to its initial factory default settings
-#define DXL_INST_REBOOT        0x08u  //< Instruction to reboot the Device
-#define DXL_INST_SYNC_WRITE    0x83u  //< Instruction to write data to multiple devices with the same Address with the same length at once
-#define DXL_INST_SYNC_READ     0x82u  //< Instruction to read data from multiple devices with the same Address with the same length at once
-#define DXL_INST_BULK_WRITE    0x93u  //< Instruction to write data to multiple devices with different Addresses with different lengths at once
-#define DXL_INST_BULK_READ     0x92u  //< Instruction to read data from multiple devices with different Addresses with different lengths at once
-#define DXL_STATUS_INST        0x55u  //< Return packet sent following the execution of an Instruction Packet
+#define DXL_INST_PING          0x01u //< Instruction that checks whether the Packet has arrived at a device with the same ID as the specified packet ID
+#define DXL_INST_READ          0x02u //< Instruction to read data from the Device
+#define DXL_INST_WRITE         0x03u //< Instruction to write data to the Device
+#define DXL_INST_FACTORY_RESET 0x06u //< Instruction that resets the Control Table to its initial factory default settings
+#define DXL_INST_REBOOT        0x08u //< Instruction to reboot the Device
+#define DXL_INST_SYNC_WRITE    0x83u //< Instruction to write data to multiple devices with the same Address with the same length at once
+#define DXL_INST_SYNC_READ     0x82u //< Instruction to read data from multiple devices with the same Address with the same length at once
+#define DXL_INST_BULK_WRITE    0x93u //< Instruction to write data to multiple devices with different Addresses with different lengths at once
+#define DXL_INST_BULK_READ     0x92u //< Instruction to read data from multiple devices with different Addresses with different lengths at once
+#define DXL_STATUS_INST        0x55u //< Return packet sent following the execution of an Instruction Packet
 
-#define DXL_BROADCAST_ID       0xFEu  //< Broadcast ID
-#define DXL_RX_TIMEOUT_MS      10u    //< Receive timeout in milliseconds
-#define DXL_MAX_PACKET_SIZE    128u   //< Maximum receive buffer size (bytes)
-
+#define DXL_BROADCAST_ID     0xFEu  //< Broadcast ID
+#define DXL_RX_TIMEOUT_MS    10u    //< Receive timeout in milliseconds
+#define DXL_MAX_PACKET_SIZE  128u   //< Maximum receive buffer size (bytes)
+// clang-format on
 
 /**
  * @brief Decoded status packet returned by a Dynamixel servo.
  */
-struct DxlStatusPacket {
-    bool    valid;        //< True if packet is valid and CRC passed
-    uint8_t id;           //< Servo ID that sent the response
-    uint8_t error;        //< Error byte from status packet
-    uint8_t data[8];      //< Parameter bytes (up to 8)
-    uint8_t dataLength;   //< Number of parameter bytes received
+struct DxlStatusPacket
+{
+    bool valid;         //< True if packet is valid and CRC passed
+    uint8_t id;         //< Servo ID that sent the response
+    uint8_t error;      //< Error byte from status packet
+    uint8_t data[8];    //< Parameter bytes (up to 8)
+    uint8_t dataLength; //< Number of parameter bytes received
 };
 
 /**
  * @brief Velocity profile types.
  */
-enum class DxlVelocityProfile : uint8_t {
-    PROFILE_NOT_USED = 0,
-    RECTANGULAR      = 1,
-    TRIANGULAR       = 2,
-    TRAPEZOIDAL      = 3,
+enum class DxlVelocityProfile : uint8_t
+{
+    ProfileNotUsed = 0,
+    RECTANGULAR = 1,
+    TRIANGULAR = 2,
+    TRAPEZOIDAL = 3,
 };
 
 /**
  * @brief Decoded moving-status register.
  */
-struct DxlMovingStatus {
-    uint8_t             raw;            //< Raw register byte (address 123).
-    DxlVelocityProfile  profileType;    //< Active velocity profile type (bits [5:4]).
-    bool                followingError; //< True if position following error threshold exceeded (bit 3).
-    bool                profileOngoing; //< True if the velocity profile is still being executed (bit 1).
-    bool                inPosition;     //< True if goal position has been reached (bit 0).
+struct DxlMovingStatus
+{
+    uint8_t raw;                    //< Raw register byte (address 123).
+    DxlVelocityProfile profileType; //< Active velocity profile type (bits [5:4]).
+    bool followingError;            //< True if position following error threshold exceeded (bit 3).
+    bool profileOngoing;            //< True if the velocity profile is still being executed (bit 1).
+    bool inPosition;                //< True if goal position has been reached (bit 0).
 };
-
 
 /**
  * @brief Low-level Dynamixel Protocol 2.0 driver.
@@ -86,18 +88,19 @@ struct DxlMovingStatus {
  *   motor.setTorqueEnable(true);
  *   motor.setGoalVelocity_RPM(10.0f);
  */
-class DynamixelLL {
-public:
+class DynamixelLL
+{
+  public:
     /**
      * @brief Construct a DynamixelLL instance.
      * @param usart   USART peripheral (USART2 for DXL Bus 1, USART3 for Bus 2).
      * @param servoID Target servo ID (0–253).
      */
-    DynamixelLL(USART_TypeDef *usart, uint8_t servoID);
+    DynamixelLL(USART_TypeDef* usart, uint8_t servoID);
     ~DynamixelLL();
 
-    DynamixelLL(const DynamixelLL &) = delete;
-    DynamixelLL &operator=(const DynamixelLL &) = delete;
+    DynamixelLL(const DynamixelLL&) = delete;
+    DynamixelLL& operator=(const DynamixelLL&) = delete;
 
     /**
      * @brief Enable RS-485 DE hardware control (DEM bit) and flush USART RX.
@@ -115,7 +118,7 @@ public:
      * @param motorIDs  Array of servo IDs to include in the sync group.
      * @param numMotors Number of entries in `motorIDs` (must be ≥ 2).
      */
-    void enableSync(const uint8_t *motorIDs, uint8_t numMotors);
+    void enableSync(const uint8_t* motorIDs, uint8_t numMotors);
 
     /**
      * @brief Disable synchronous mode and release the motor-ID array.
@@ -150,7 +153,7 @@ public:
      * @param offsetAngle Homing offset angle in degrees.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t setHomingOffset_A(float offsetAngle);
+    uint8_t setHomingOffsetA(float offsetAngle);
 
     /**
      * @brief Set goal position in Position Control Mode (control table address 116).
@@ -158,7 +161,7 @@ public:
      * @param goalPosition Target position in raw units (0–4095 for one full turn).
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t setGoalPosition_PCM(uint16_t goalPosition);
+    uint8_t setGoalPositionPcm(uint16_t goalPosition);
 
     /**
      * @brief Set goal position in degrees for Position Control Mode.
@@ -168,7 +171,7 @@ public:
      * @param angleDegrees Target angle in degrees (0.0–360.0).
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t setGoalPosition_A_PCM(float angleDegrees);
+    uint8_t setGoalPositionAPcm(float angleDegrees);
 
     /**
      * @brief Set goal position in Extended Position Control Mode (control table address 116).
@@ -178,7 +181,7 @@ public:
      * @param extendedPosition Target position in raw encoder counts.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t setGoalPosition_EPCM(int32_t extendedPosition);
+    uint8_t setGoalPositionEpcm(int32_t extendedPosition);
 
     /**
      * @brief Enable or disable motor torque (control table address 64).
@@ -269,7 +272,7 @@ public:
      * @param rpm Target velocity in revolutions per minute.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t setGoalVelocity_RPM(float rpm);
+    uint8_t setGoalVelocityRpm(float rpm);
 
     /**
      * @brief Set goal PWM duty cycle (PWM Control Mode, control table address 100).
@@ -287,7 +290,7 @@ public:
      * @param[out] rpm Present velocity in revolutions per minute.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getPresentVelocity_RPM(float &rpm);
+    uint8_t getPresentVelocityRpm(float& rpm);
 
     /**
      * @brief Read present position in raw encoder counts (control table address 132).
@@ -295,7 +298,7 @@ public:
      * @param[out] presentPosition Present position value.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getPresentPosition(int32_t &presentPosition);
+    uint8_t getPresentPosition(int32_t& presentPosition);
 
     /**
      * @brief Read present load percentage (control table address 126).
@@ -306,7 +309,7 @@ public:
      * @param[out] currentLoad Present load value.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getCurrentLoad(int16_t &currentLoad);
+    uint8_t getCurrentLoad(int16_t& currentLoad);
 
     /**
      * @brief Read the Moving Status register (control table address 123).
@@ -314,7 +317,7 @@ public:
      * @param[out] status Decoded moving status (profile type, following error, in-position flag).
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getMovingStatus(DxlMovingStatus &status);
+    uint8_t getMovingStatus(DxlMovingStatus& status);
 
     /**
      * @brief Read the Hardware Error Status register (control table address 70).
@@ -322,7 +325,7 @@ public:
      * @param[out] hwErrorStatus Bitmask of active hardware fault flags.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getHardwareErrorStatus(uint8_t &hwErrorStatus);
+    uint8_t getHardwareErrorStatus(uint8_t& hwErrorStatus);
 
     /**
      * @brief Read the present internal temperature in °C (control table address 146).
@@ -330,7 +333,7 @@ public:
      * @param[out] temperature Internal temperature in degrees Celsius.
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t getPresentTemperature(uint8_t &temperature);
+    uint8_t getPresentTemperature(uint8_t& temperature);
 
     /**
      * @brief Turn off the servo LED (control table address 65).
@@ -348,7 +351,7 @@ public:
      * @param[out] modelNumber 16-bit model number encoded in bits [15:0].
      * @return Error byte from status packet (0 = success).
      */
-    uint8_t ping(uint32_t &modelNumber);
+    uint8_t ping(uint32_t& modelNumber);
 
     /**
      * @brief Restore factory default settings.
@@ -391,8 +394,7 @@ public:
      * @return 0 on full success, non-zero error byte if any response had an error.
      */
     template <typename T>
-    uint8_t syncRead(uint16_t address, uint8_t dataLength,
-                     const uint8_t *ids, T *values, uint8_t count);
+    uint8_t syncRead(uint16_t address, uint8_t dataLength, const uint8_t* ids, T* values, uint8_t count);
 
     /**
      * @brief Write different values to different registers on multiple servos (BULK_WRITE).
@@ -404,8 +406,7 @@ public:
      * @param count       Number of servos.
      * @return True if the packet was sent successfully.
      */
-    bool bulkWrite(const uint8_t *ids, uint16_t *addresses,
-                   uint8_t *dataLengths, uint32_t *values, uint8_t count);
+    bool bulkWrite(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLengths, uint32_t* values, uint8_t count);
 
     /**
      * @brief Read different registers from different servos simultaneously (BULK_READ).
@@ -417,8 +418,7 @@ public:
      * @param count       Number of servos.
      * @return 0 on full success, non-zero error byte if any response had an error.
      */
-    uint8_t bulkRead(const uint8_t *ids, uint16_t *addresses,
-                     uint8_t *dataLengths, uint32_t *values, uint8_t count);
+    uint8_t bulkRead(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLengths, uint32_t* values, uint8_t count);
 
     /** @brief Set operating mode for each motor in the sync group. */
     template <uint8_t N>
@@ -430,19 +430,19 @@ public:
 
     /** @brief Set homing offset (degrees) for each motor in the sync group. */
     template <uint8_t N>
-    uint8_t setHomingOffset_A(const float (&offsetAngles)[N]);
+    uint8_t setHomingOffsetA(const float (&offsetAngles)[N]);
 
     /** @brief Set goal position (PCM, raw) for each motor in the sync group. */
     template <uint8_t N>
-    uint8_t setGoalPosition_PCM(const uint16_t (&goalPositions)[N]);
+    uint8_t setGoalPositionPcm(const uint16_t (&goalPositions)[N]);
 
     /** @brief Set goal position (degrees, PCM) for each motor in the sync group. */
     template <uint8_t N>
-    uint8_t setGoalPosition_A_PCM(const float (&angleDegrees)[N]);
+    uint8_t setGoalPositionAPcm(const float (&angleDegrees)[N]);
 
     /** @brief Set goal position (EPCM, raw) for each motor in the sync group. */
     template <uint8_t N>
-    uint8_t setGoalPosition_EPCM(const int32_t (&extendedPositions)[N]);
+    uint8_t setGoalPositionEpcm(const int32_t (&extendedPositions)[N]);
 
     /** @brief Enable or disable torque for each motor in the sync group. */
     template <uint8_t N>
@@ -484,11 +484,11 @@ public:
 
     /** @brief Set goal velocity (RPM) for each motor in the sync group. */
     template <uint8_t N>
-    uint8_t setGoalVelocity_RPM(const float (&rpmValues)[N]);
+    uint8_t setGoalVelocityRpm(const float (&rpmValues)[N]);
 
     /** @brief Read present velocity (RPM) from each motor in the sync group. */
     template <uint8_t N>
-    uint8_t getPresentVelocity_RPM(float (&rpms)[N]);
+    uint8_t getPresentVelocityRpm(float (&rpms)[N]);
 
     /** @brief Read present position from each motor in the sync group. */
     template <uint8_t N>
@@ -508,20 +508,23 @@ public:
      *
      * Called from a blocking main-loop context — keep it short (e.g. GPIO toggle).
      */
-    static void setActivityCallback(void (*cb)(void)) { _activityCb = cb; }
+    static void setActivityCallback(void (*cb)(void))
+    {
+        activityCb = cb;
+    }
 
-private:
-    USART_TypeDef *_usart;    //< USART peripheral
-    uint8_t        _servoID;  //< Target servo ID
+  private:
+    USART_TypeDef* _usart; //< USART peripheral
+    uint8_t _servoID;      //< Target servo ID
 
-    bool     _sync      = false;    //< Sync-broadcast mode active
-    uint8_t  _numMotors = 1;        //< Number of motors in sync group
-    uint8_t *_motorIDs  = nullptr;  //< Motor IDs for sync group
+    bool _sync = false;           //< Sync-broadcast mode active
+    uint8_t _numMotors = 1;       //< Number of motors in sync group
+    uint8_t* _motorIDs = nullptr; //< Motor IDs for sync group
 
-    bool    _debug = false;   //< True if verbose debug logging is enabled.
-    uint8_t _error = 0;       //< Last error byte received from a status packet.
+    bool _debug = false; //< True if verbose debug logging is enabled.
+    uint8_t _error = 0;  //< Last error byte received from a status packet.
 
-    static void (*_activityCb)(void);  //< Optional TX/RX activity hook (shared across all instances).
+    static void (*activityCb)(void); //< Optional TX/RX activity hook (shared across all instances).
 
     /**
      * @brief Transmit a raw byte packet over the USART (blocking, LL).
@@ -533,7 +536,7 @@ private:
      * @param length Number of bytes to transmit.
      * @return True on success, false if the USART is not ready.
      */
-    bool sendPacket(const uint8_t *packet, uint16_t length);
+    bool sendPacket(const uint8_t* packet, uint16_t length);
 
     /**
      * @brief Receive a Dynamixel status packet with timeout (blocking, LL).
@@ -556,7 +559,7 @@ private:
      * @param length Number of bytes.
      * @return CRC-16-IBM result.
      */
-    uint16_t calculateCRC(const uint8_t *data, uint16_t length);
+    uint16_t calculateCRC(const uint8_t* data, uint16_t length);
 
     /**
      * @brief Send a WRITE instruction and wait for the status response.
@@ -578,7 +581,7 @@ private:
      * @return Error byte from status packet (0 = success).
      */
     template <typename T>
-    uint8_t readRegister(uint16_t address, T &value, uint8_t size);
+    uint8_t readRegister(uint16_t address, T& value, uint8_t size);
 
     /**
      * @brief Send a Sync Write instruction to multiple servos simultaneously.
@@ -590,8 +593,7 @@ private:
      * @param count      Number of servos.
      * @return True if the packet was sent successfully.
      */
-    bool syncWrite(uint16_t address, uint8_t dataLength,
-                   const uint8_t *ids, uint32_t *values, uint8_t count);
+    bool syncWrite(uint16_t address, uint8_t dataLength, const uint8_t* ids, uint32_t* values, uint8_t count);
 
     /**
      * @brief Build and transmit a SYNC_WRITE packet from pre-encoded parameters.
@@ -600,7 +602,7 @@ private:
      * @param parametersLength Number of parameter bytes.
      * @return True on success.
      */
-    bool sendSyncWritePacket(const uint8_t *parameters, uint16_t parametersLength);
+    bool sendSyncWritePacket(const uint8_t* parameters, uint16_t parametersLength);
 
     /**
      * @brief Build and transmit a SYNC_READ packet.
@@ -611,8 +613,7 @@ private:
      * @param count      Number of servos.
      * @return True on success.
      */
-    bool sendSyncReadPacket(uint16_t address, uint8_t dataLength,
-                            const uint8_t *ids, uint8_t count);
+    bool sendSyncReadPacket(uint16_t address, uint8_t dataLength, const uint8_t* ids, uint8_t count);
 
     /**
      * @brief Build and transmit a BULK_WRITE packet.
@@ -621,7 +622,7 @@ private:
      * @param parametersLength Number of parameter bytes.
      * @return True on success.
      */
-    bool sendBulkWritePacket(const uint8_t *parameters, uint16_t parametersLength);
+    bool sendBulkWritePacket(const uint8_t* parameters, uint16_t parametersLength);
 
     /**
      * @brief Build and transmit a BULK_READ packet.
@@ -632,8 +633,7 @@ private:
      * @param count       Number of servos.
      * @return True on success.
      */
-    bool sendBulkReadPacket(const uint8_t *ids, uint16_t *addresses,
-                            uint8_t *dataLengths, uint8_t count);
+    bool sendBulkReadPacket(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLengths, uint8_t count);
 
     /**
      * @brief Validate that the sync group contains at least `arraySize` entries.
@@ -647,4 +647,4 @@ private:
 // Include template definitions.
 #include "DynamixelLL.tpp"
 
-#endif // DYNAMIXEL_LL_H 
+#endif // DYNAMIXEL_LL_H

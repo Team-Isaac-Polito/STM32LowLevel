@@ -16,8 +16,9 @@
 #include <cstdint>
 #include <cstdbool>
 
-class Battery {
-public:
+class Battery
+{
+  public:
     /**
      * @brief Calibrate and enable ADC1. Call once after MX_ADC1_Init().
      */

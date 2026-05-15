@@ -1,0 +1,71 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+
+# Braces — Allman style via Custom (opening brace on its own line)
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel:        true
+  AfterClass:            true
+  AfterControlStatement: Always
+  AfterEnum:             true
+  AfterFunction:         true
+  AfterNamespace:        true
+  AfterStruct:           true
+  AfterUnion:            true
+  AfterExternBlock:      true
+  BeforeCatch:           true
+  BeforeElse:            true
+  BeforeWhile:           true
+  IndentBraces:          false
+  SplitEmptyFunction:    false
+  SplitEmptyRecord:      false
+  SplitEmptyNamespace:   false
+
+# No inline / single-line constructs
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: None
+RemoveBracesLLVM: true
+
+# Line length
+ColumnLimit: 120
+ReflowComments: false
+
+# Alignment
+AlignConsecutiveMacros:
+  Enabled: false
+AlignConsecutiveAssignments:
+  Enabled: false
+AlignConsecutiveDeclarations:
+  Enabled: false
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+
+# Pointers and references
+PointerAlignment: Left
+
+# Includes
+SortIncludes: false
+IncludeBlocks: Preserve
+
+# Misc
+BinPackArguments: false
+BinPackParameters: false
+SpaceBeforeParens: ControlStatements
+BreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: NextLineOnly
+SpacesInAngles: false
+SpaceAfterCStyleCast: false
