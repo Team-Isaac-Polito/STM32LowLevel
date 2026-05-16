@@ -46,6 +46,9 @@
 
 #include <cstring> // memcpy
 #include <cstdlib> // abs (integer)
+
+/* USB Device CDC */
+#include "usbd_cdc_if.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -304,6 +307,10 @@ extern "C" int main(void)
     MX_FMAC_Init();
     MX_I2C3_Init();
     MX_FDCAN2_Init();
+
+    /* USB Device CDC init (must come after MX_USB_PCD_Init) */
+    MX_USB_Device_Init();
+
     /* USER CODE BEGIN 2 */
 
     // LEDs — power-on indicator and DXL activity hook

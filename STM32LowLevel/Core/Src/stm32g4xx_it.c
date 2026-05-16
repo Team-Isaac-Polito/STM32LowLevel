@@ -60,6 +60,8 @@
 
 /* USER CODE END EV */
 
+extern PCD_HandleTypeDef hpcd_USB_FS;
+
 /******************************************************************************/
 /*           Cortex-M4 Processor Interruption and Exception Handlers          */
 /******************************************************************************/
@@ -197,6 +199,22 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32g4xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles USB high priority interrupt.
+  */
+void USB_HP_IRQHandler(void)
+{
+  HAL_PCD_IRQHandler(&hpcd_USB_FS);
+}
+
+/**
+  * @brief This function handles USB low priority interrupt.
+  */
+void USB_LP_IRQHandler(void)
+{
+  HAL_PCD_IRQHandler(&hpcd_USB_FS);
+}
 
 /* USER CODE BEGIN 1 */
 
