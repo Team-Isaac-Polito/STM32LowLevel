@@ -144,7 +144,33 @@ dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D build/MK2_MOD1/STM32Low
    ```powershell
    [System.IO.Ports.SerialPort]::GetPortNames()
    ```
-4. Open a terminal at 115200 baud, 8N1
+
+#### Serial monitor (recommended)
+
+A Python-based monitor tool is provided at `tools/serial_monitor/`. It auto-detects the COM port, and supports timestamps and file logging:
+
+```bash
+# Auto-detect port and monitor
+python -m tools.serial_monitor
+
+# Explicit port
+python -m tools.serial_monitor COM5
+
+# With timestamps (useful for debugging timing)
+python -m tools.serial_monitor COM5 --timestamp
+
+# Also log to a file
+python -m tools.serial_monitor COM5 --log debug_output.txt
+
+# List available ports
+python -m tools.serial_monitor --list
+```
+
+Press `Ctrl+C` to stop monitoring.
+
+#### Any terminal program
+
+You can also use PuTTY, Tera Term, or any serial terminal at **115200 baud, 8N1**.
 
 ### From firmware
 
