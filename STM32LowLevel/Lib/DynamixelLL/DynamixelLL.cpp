@@ -403,9 +403,7 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     while (LL_USART_IsActiveFlag_RXNE(_usart))
         (void)LL_USART_ReceiveData8(_usart);
     LL_USART_ClearFlag_ORE(_usart);
-
-    // DISABLE the receiver internally to block the self-echo loopback
-    LL_USART_DisableDirectionRx(_usart);
+    LL_USART_ClearFlag_FE(_usart);
 
     // STEP 1: Switch the SN74LVC1T45 to Transmit mode (A -> B)
     if (_usart == USART2) {
@@ -429,7 +427,8 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         }
         LL_USART_TransmitData8(_usart, packet[i]);
     }
-    // Wait until transmission complete (TC flag)
+
+    // Wait until transmission complete (TC flag) — all bits are out
     uint32_t tcTimeout = 100000U;
     while (!LL_USART_IsActiveFlag_TC(_usart))
     {
@@ -437,16 +436,11 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         {
             if (_debug)
                 debug.log(Level::LogWarn, "DXL: TC timeout\n");
-            LL_USART_EnableDirectionRx(_usart); // Safe fallback
             return false;
         }
     }
 
-    // RE-ENABLE the receiver now that our transmission is 100% finished
-    LL_USART_EnableDirectionRx(_usart);
-
     // STEP 2: Switch the SN74LVC1T45 back to Receive mode (B -> A)
-    // The STM32 pin automatically relaxes into input state due to half-duplex mode
     if (_usart == USART2) {
         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
     } else if (_usart == USART3) {
@@ -463,6 +457,22 @@ DxlStatusPacket DynamixelLL::receivePacket()
 {
     DxlStatusPacket result = {false, 0, 0, {}, 0};
 
+    // Clear latent error flags that may have accumulated from noise,
+    // floating bus, or self-echo during transmission.
+    // FE (Framing Error): triggered by floating line when no motor connected
+    // NE (Noise Error): triggered by noise on the bus
+    // ORE (Overrun Error): triggered by self-echo in half-duplex mode
+    if (LL_USART_IsActiveFlag_FE(_usart))
+        LL_USART_ClearFlag_FE(_usart);
+    if (LL_USART_IsActiveFlag_NE(_usart))
+        LL_USART_ClearFlag_NE(_usart);
+    if (LL_USART_IsActiveFlag_ORE(_usart))
+        LL_USART_ClearFlag_ORE(_usart);
+
+    // Flush any stale bytes from a previous failed read
+    while (LL_USART_IsActiveFlag_RXNE(_usart))
+        (void)LL_USART_ReceiveData8(_usart);
+
     uint8_t buf[DXL_MAX_PACKET_SIZE];
     uint16_t idx = 0;
     bool headerFound = false;
@@ -470,6 +480,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
     uint32_t start = HAL_GetTick();
 
     // locate the 4-byte header 0xFF 0xFF 0xFD 0x00
+    // Also handle the case where the first 0xFF might be missing (partial header)
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
     {
         if (LL_USART_IsActiveFlag_RXNE(_usart))
@@ -479,6 +490,20 @@ DxlStatusPacket DynamixelLL::receivePacket()
                 buf[idx - 1] == 0x00)
             {
                 // Normalise header to start at index 0
+                buf[0] = 0xFF;
+                buf[1] = 0xFF;
+                buf[2] = 0xFD;
+                buf[3] = 0x00;
+                idx = 4;
+                headerFound = true;
+                break;
+            }
+            else if (idx >= 3 &&
+                     buf[idx - 3] == 0xFF &&
+                     buf[idx - 2] == 0xFD &&
+                     buf[idx - 1] == 0x00)
+            {
+                // Partial header: first 0xFF was likely consumed as stale byte
                 buf[0] = 0xFF;
                 buf[1] = 0xFF;
                 buf[2] = 0xFD;
@@ -590,7 +615,7 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
 
     // Packet: Header(4) + ID(1) + Length(2) + Inst(1) + Addr(2) + Data(size) + CRC(2)
     uint16_t length = 5u + size; // Inst + Addr + Data + CRC
-    uint8_t pktLen = 10u + size; // total bytes
+    uint8_t pktLen = 12u + size; // total bytes
     uint8_t packet[pktLen];
 
     packet[0] = 0xFF;
@@ -617,8 +642,12 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
     }
 
     DxlStatusPacket rsp = receivePacket();
-    if (_debug && !rsp.valid)
-        debug.log(Level::LogWarn, "DXL: write invalid response\n");
+    if (!rsp.valid)
+    {
+        if (_debug)
+            debug.log(Level::LogWarn, "DXL: write invalid response\n");
+        return 1u; // Return error when no valid status packet received
+    }
     if (_debug && rsp.error)
         debug.log(Level::LogWarn, "DXL: write error 0x%02X\n", rsp.error);
     return rsp.error;

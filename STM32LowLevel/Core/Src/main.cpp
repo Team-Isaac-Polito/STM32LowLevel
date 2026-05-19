@@ -520,31 +520,18 @@ static void dxlTractionInit(void)
 
     dxlTraction.begin();
 
-    // Enable DXL debug only on the broadcast handle to reduce buffer flood
-    // Individual motor debug is enabled only after successful ping
+    // Enable DXL debug on all handles for visibility
     dxlTraction.setDebug(true);
-
-    // --- Ping both servos to confirm bus communication before configuring ---
-    uint32_t model = 0;
-    uint8_t pingL = motLeft.ping(model);
-    model = 0;
-    uint8_t pingR = motRight.ping(model);
-
-    // Enable per-motor debug only if ping succeeded (reduces flood when servos are absent)
-    if (pingL == 0U)
-        motLeft.setDebug(true);
-    if (pingR == 0U)
-        motRight.setDebug(true);
+    motLeft.setDebug(true);
+    motRight.setDebug(true);
 
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
     motRight.setTorqueEnable(false);
-    HAL_Delay(10U);
 
     // Status return level 2 — respond to all instructions
     motLeft.setStatusReturnLevel(2U);
     motRight.setStatusReturnLevel(2U);
-    HAL_Delay(10U);
 
     // Drive mode: right motor needs reverseMode=true (opposite mounting)
     motLeft.setDriveMode(false, false, false);
@@ -553,7 +540,6 @@ static void dxlTractionInit(void)
     // Operating mode 1 = velocity control
     dxlTraction.enableSync(tractionIds, n);
     dxlTraction.setOperatingMode(1U);
-    HAL_Delay(10U);
 
     // Instant velocity response (profile acceleration = 0)
     dxlTraction.setProfileAcceleration(0U);
