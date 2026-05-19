@@ -45,13 +45,14 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
 
     // Receive and process the response.
     DxlStatusPacket response = receivePacket();
-    if (_debug)
+    if (!response.valid)
     {
-        if (!response.valid)
+        if (_debug)
             debug.log(Level::LogWarn, "DXL: invalid status packet received\n");
-        if (response.error != 0)
-            debug.log(Level::LogWarn, "DXL: read error 0x%02X\n", response.error);
+        return 1u; // Return error when no valid status packet received
     }
+    if (_debug && response.error != 0)
+        debug.log(Level::LogWarn, "DXL: read error 0x%02X\n", response.error);
 
     value = 0;
     for (uint8_t i = 0; i < response.dataLength; i++)

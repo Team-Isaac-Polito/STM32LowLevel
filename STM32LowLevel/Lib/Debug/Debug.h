@@ -1,13 +1,14 @@
 /**
  * @file Debug.h
- * @brief Serial debug logger for STM32LowLevel (UART5 LL backend).
+ * @brief Serial debug logger for STM32LowLevel (USB CDC backend).
  *
- * UART5 (PC12 TX / PD2 RX, 115200 baud) is the dedicated debug console.
+ * All debug output goes through USB CDC. The CDC TX ring buffer (1024 bytes)
+ * preserves recent messages even if the host hasn't connected yet.
  *
  * Usage:
- *   Debug.setLevel(Level::LOG_OFF);
+ *   Debug.setLevel(Level::LOG_INFO);
  *   Debug.log(Level::LOG_INFO, "voltage: %.2f V\n", voltage);
- *   printf("also routes through UART5\n");  // via _write retarget
+ *   printf("also routes through USB CDC\n");  // via _write retarget
  */
 
 #ifndef DEBUG_H
@@ -30,10 +31,10 @@ enum class Level : uint8_t
 };
 
 /**
- * @brief Serial debug logger backed by UART5 (PC12 TX / PD2 RX, 115200 baud).
+ * @brief Serial debug logger backed by USB CDC.
  *
  * Call Debug.setLevel() once at startup, then use Debug.log() throughout.
- * printf() is also routed through UART5 via the _write syscall retarget.
+ * printf() is also routed through USB CDC via the _write syscall retarget.
  */
 class SerialDebug
 {
@@ -45,7 +46,7 @@ class SerialDebug
     void setLevel(Level lvl);
 
     /**
-     * @brief Write a formatted message to UART5 if lvl <= active level.
+     * @brief Write a formatted message via USB CDC if lvl <= active level.
      * @param lvl Verbosity of this message.
      * @param fmt printf-style format string.
      * @param ... Format arguments.
@@ -61,7 +62,7 @@ class SerialDebug
     void vlog(Level lvl, const char* fmt, va_list args);
 
     /**
-     * @brief Transmit a single character over UART5 (blocking).
+     * @brief Transmit a single character over USB CDC (non-blocking, buffered).
      * @param ch Character to send.
      */
     void putchar(char ch);

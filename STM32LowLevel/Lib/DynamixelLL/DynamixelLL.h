@@ -6,8 +6,15 @@
  * e-Manual for DYNAMIXEL XL430-W250: https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/
  *
  * Physical layer:
- *   - DXL Bus 1: USART2, PA2 TX (open-drain), PA1 DE, 4.5 Mbps half-duplex
- *   - DXL Bus 2: USART3, PB10 TX (open-drain), PB14 DE, 4.5 Mbps half-duplex
+ *   - DXL Bus 1: USART2, PA2 TX (open-drain, shared TX/RX in half-duplex),
+ *                 PA1 DE (direction control for SN74LVC1T45), 2 Mbps
+ *   - DXL Bus 2: USART3, PB10 TX (open-drain, shared TX/RX in half-duplex),
+ *                 PB14 DE (direction control for SN74LVC1T45), 2 Mbps
+ *
+ * The USART is configured in single-wire half-duplex mode (HDSEL=1) with
+ * driver enable mode (DEM=1).  The TX pin serves as both transmit and
+ * receive.  The DE pin controls the SN74LVC1T45 level shifter direction
+ * automatically via hardware.
  */
 
 #ifndef DYNAMIXEL_LL_H
@@ -17,6 +24,7 @@
 
 #include "stm32g4xx_ll_usart.h"
 #include "stm32g4xx_ll_crc.h"
+#include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_hal.h" // HAL_GetTick() for timeouts
 #include "Debug.h"
 
@@ -103,7 +111,12 @@ class DynamixelLL
     DynamixelLL& operator=(const DynamixelLL&) = delete;
 
     /**
-     * @brief Enable RS-485 DE hardware control (DEM bit) and flush USART RX.
+     * @brief Configure USART for TTL half-duplex with hardware DE control.
+     *
+     * Keeps HDSEL=1 (single-wire half-duplex, TX pin shared with RX) and
+     * enables DEM=1 (driver enable mode) so the USART hardware automatically
+     * toggles the DE pin for the external SN74LVC1T45 level shifter.
+     * Flushes any stale RX bytes.
      *
      * Must be called once after MX_USARTx_UART_Init().
      */

@@ -57,6 +57,9 @@ target_include_directories(debug_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Class/CDC/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App
 )
 # Inherit STM32G474xx / USE_FULL_LL_DRIVER / USE_HAL_DRIVER from stm32cubemx
 target_link_libraries(debug_lib PUBLIC stm32cubemx)
@@ -153,6 +156,27 @@ target_include_directories(imu_lib PUBLIC
 )
 target_link_libraries(imu_lib PUBLIC stm32cubemx)
 
+# USB Device library (CDC ACM VCP)
+add_library(usb_device_lib STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Core/Src/usbd_core.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Core/Src/usbd_ioreq.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Core/Src/usbd_ctlreq.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Class/CDC/Src/usbd_cdc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App/usbd_conf.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App/usbd_desc.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App/usbd_cdc_if.c
+)
+target_include_directories(usb_device_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/Class/CDC/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/USB_Device/App
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32G4xx_HAL_Driver/Inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
+    ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+)
+target_link_libraries(usb_device_lib PUBLIC stm32cubemx)
+
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 
@@ -165,6 +189,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     encoder_lib
     battery_lib
     imu_lib
+    usb_device_lib
 
     # Add user defined libraries
 )
