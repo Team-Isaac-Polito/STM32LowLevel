@@ -23,13 +23,21 @@ DynamixelLL::~DynamixelLL()
 void DynamixelLL::begin()
 {
     LL_USART_Disable(_usart);
-    LL_USART_EnableDEMode(_usart);
-    LL_USART_SetDESignalPolarity(_usart, LL_USART_DE_POLARITY_HIGH);
+
+    SET_BIT(_usart->CR3, USART_CR3_HDSEL);
+
     LL_USART_Enable(_usart);
 
-    // Flush any stale bytes that arrived before init
     while (LL_USART_IsActiveFlag_RXNE(_usart))
         (void)LL_USART_ReceiveData8(_usart);
+
+    // Set default direction: RX mode (DIR = LOW)
+    // This ensures the level shifter is ready to receive data
+    if (_usart == USART2) {
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
+    } else if (_usart == USART3) {
+        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = LOW (RX mode)
+    }
 }
 
 void DynamixelLL::setDebug(bool enable)
@@ -376,30 +384,74 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
 {
     if (_debug)
     {
-        char msg[8];
-        debug.log(Level::LogDebug, "DXL TX(%u):", (unsigned)length);
-        for (uint16_t i = 0; i < length; ++i)
-        {
-            snprintf(msg, sizeof(msg), " %02X", packet[i]);
-            debug.log(Level::LogDebug, "%s", msg);
-        }
-        debug.log(Level::LogDebug, "\n");
+        char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
+        int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL TX(%u):", (unsigned)length);
+        for (uint16_t i = 0; i < length && pos < (int)sizeof(hexBuf) - 4; ++i)
+            pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", packet[i]);
+        debug.log(Level::LogDebug, "%s\n", hexBuf);
     }
 
-    // Flush stale RX data
+    // Verify USART is enabled
+    if (!LL_USART_IsEnabled(_usart))
+    {
+        if (_debug)
+            debug.log(Level::LogWarn, "DXL: USART not enabled!\n");
+        return false;
+    }
+
+    // Flush any truly stale RX data and clear latent errors before starting
     while (LL_USART_IsActiveFlag_RXNE(_usart))
         (void)LL_USART_ReceiveData8(_usart);
+    LL_USART_ClearFlag_ORE(_usart);
+
+    // DISABLE the receiver internally to block the self-echo loopback
+    LL_USART_DisableDirectionRx(_usart);
+
+    // STEP 1: Switch the SN74LVC1T45 to Transmit mode (A -> B)
+    if (_usart == USART2) {
+        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = HIGH (TX mode)
+    } else if (_usart == USART3) {
+        LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = HIGH (TX mode)
+    }
 
     // Transmit all bytes (blocking)
     for (uint16_t i = 0; i < length; ++i)
     {
+        uint32_t timeout = 100000U;
         while (!LL_USART_IsActiveFlag_TXE(_usart))
-        {}
+        {
+            if (--timeout == 0U)
+            {
+                if (_debug)
+                    debug.log(Level::LogWarn, "DXL: TXE timeout at byte %u\n", i);
+                return false;
+            }
+        }
         LL_USART_TransmitData8(_usart, packet[i]);
     }
     // Wait until transmission complete (TC flag)
+    uint32_t tcTimeout = 100000U;
     while (!LL_USART_IsActiveFlag_TC(_usart))
-    {}
+    {
+        if (--tcTimeout == 0U)
+        {
+            if (_debug)
+                debug.log(Level::LogWarn, "DXL: TC timeout\n");
+            LL_USART_EnableDirectionRx(_usart); // Safe fallback
+            return false;
+        }
+    }
+
+    // RE-ENABLE the receiver now that our transmission is 100% finished
+    LL_USART_EnableDirectionRx(_usart);
+
+    // STEP 2: Switch the SN74LVC1T45 back to Receive mode (B -> A)
+    // The STM32 pin automatically relaxes into input state due to half-duplex mode
+    if (_usart == USART2) {
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
+    } else if (_usart == USART3) {
+        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = LOW (RX mode)
+    }
 
     if (activityCb)
         activityCb();
@@ -441,7 +493,15 @@ DxlStatusPacket DynamixelLL::receivePacket()
     if (!headerFound)
     {
         if (_debug)
+        {
             debug.log(Level::LogWarn, "DXL: header timeout\n");
+            // Debug: check if USART is still enabled and if any flags are set
+            debug.log(Level::LogDebug, "DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
+                      (unsigned long)_usart->ISR,
+                      (unsigned)LL_USART_IsEnabled(_usart),
+                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
+                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
+        }
         return result;
     }
 
@@ -480,14 +540,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     if (_debug)
     {
-        char msg[8];
-        debug.log(Level::LogDebug, "DXL RX(%u):", totalPacketLength);
-        for (uint16_t i = 0; i < totalPacketLength; ++i)
-        {
-            snprintf(msg, sizeof(msg), " %02X", buf[i]);
-            debug.log(Level::LogDebug, "%s", msg);
-        }
-        debug.log(Level::LogDebug, "\n");
+        char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
+        int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
+        for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
+            pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
+        debug.log(Level::LogDebug, "%s\n", hexBuf);
     }
 
     // verify instruction byte (must be 0x55 for status packet)
