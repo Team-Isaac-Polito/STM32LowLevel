@@ -313,9 +313,7 @@ extern "C" int main(void)
 
     /* Debug-mode wait: if this boot was triggered by a DTR auto-reset
      * (SFTRSTF flag set), blink the USR LED and wait for the USB host
-     * to reconnect before proceeding with the rest of init. This ensures
-     * the serial monitor catches the full boot sequence from the start.
-     * On power-on reset (SFTRSTF=0), skip this and boot normally. */
+     * to reconnect before proceeding with the rest of init.  */
     if (RCC->CSR & RCC_CSR_SFTRSTF)
     {
         /* Blink USR LED while waiting for host */
@@ -333,6 +331,12 @@ extern "C" int main(void)
 
         /* Host connected — turn off LED and proceed */
         GPIOC->BSRR = (1U << (2U + 16U));
+
+        /* Settle delay: let the host serial driver start its read loop
+         * and begin consuming from the USB endpoint buffer. Without this,
+         * the first few debug messages can be sent before the host is
+         * ready to receive them, causing them to be skipped. */
+        for (volatile int d = 0; d < 200000; d++) {}
     }
 
     // Debug — must be first so all subsequent prints reach USB CDC
