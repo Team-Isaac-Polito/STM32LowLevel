@@ -111,7 +111,6 @@ static uint32_t timeData = 0U;
 static bool canActive = false;
 
 // LED state
-static bool ledState = false;          // USR heartbeat phase
 static uint32_t ledCanLastToggle = 0U; // debounce timestamp for LED_CAN
 
 // Module-specific peripherals
@@ -268,7 +267,6 @@ extern "C" int main(void)
 {
 
     /* USER CODE BEGIN 1 */
-
     /* USER CODE END 1 */
 
     /* MCU Configuration--------------------------------------------------------*/
@@ -313,15 +311,39 @@ extern "C" int main(void)
 
     /* USER CODE BEGIN 2 */
 
+    /* Debug-mode wait: if this boot was triggered by a DTR auto-reset
+     * (SFTRSTF flag set), blink the USR LED and wait for the USB host
+     * to reconnect before proceeding with the rest of init. This ensures
+     * the serial monitor catches the full boot sequence from the start.
+     * On power-on reset (SFTRSTF=0), skip this and boot normally. */
+    if (RCC->CSR & RCC_CSR_SFTRSTF)
+    {
+        /* Blink USR LED while waiting for host */
+        RCC->AHB2ENR |= RCC_AHB2ENR_GPIOCEN;
+        GPIOC->MODER &= ~(3U << (2U * 2U));
+        GPIOC->MODER |= (1U << (2U * 2U));
+
+        while (!CDC_IsConnected())
+        {
+            GPIOC->BSRR = (1U << 2U);
+            for (volatile int d = 0; d < 50000; d++) {}
+            GPIOC->BSRR = (1U << (2U + 16U));
+            for (volatile int d = 0; d < 50000; d++) {}
+        }
+
+        /* Host connected — turn off LED and proceed */
+        GPIOC->BSRR = (1U << (2U + 16U));
+    }
+
+    // Debug — must be first so all subsequent prints reach USB CDC
+    debug.setLevel(Level::LogDebug);
+    debug.log(Level::LogInfo, "[main] Debug ready\n");
+
     // LEDs — power-on indicator and DXL activity hook
     ledSet(Led::POWER, true);
     DynamixelLL::setActivityCallback([]() {
         ledToggle(Led::DXL);
     });
-
-    // Debug — must be first so all subsequent prints reach the console
-    debug.setLevel(Level::LogInfo);
-    debug.log(Level::LogInfo, "[main] Debug ready\n");
 
     // CAN — begin() releases STBY, so must come after MX_FDCAN2_Init()
     canW.begin();
@@ -383,7 +405,14 @@ extern "C" int main(void)
         {
             timeBat = now;
             if (!battery.charged())
-                debug.log(Level::LogWarn, "[main] Low battery: %.2f V\n", battery.readVoltage());
+            {
+                float v = battery.readVoltage();
+                int vWhole = (int)v;
+                int vFrac = (int)((v - (float)vWhole) * 100.0f);
+                if (vFrac < 0)
+                    vFrac = -vFrac;
+                debug.log(Level::LogWarn, "[main] Low battery: %d.%02d V\n", vWhole, vFrac);
+            }
         }
 
         // Telemetry / feedback (25 Hz)
@@ -423,20 +452,6 @@ extern "C" int main(void)
         tickBeakStateMachine(now);
 #endif // MODC_ARM
 
-        // LED_USR heartbeat (toggle every 500 ms)
-        if (now % 1000U < 500U)
-        {
-            if (!ledState)
-            {
-                ledSet(Led::USR, true);
-                ledState = true;
-            }
-        }
-        else if (ledState)
-        {
-            ledSet(Led::USR, false);
-            ledState = false;
-        }
 
         /* USER CODE END WHILE */
 
@@ -503,10 +518,23 @@ static void dxlTractionInit(void)
 {
     static const uint8_t n = sizeof(tractionIds) / sizeof(tractionIds[0]);
 
-    // Enable RS-485 half-duplex DE mode on USART2 (must precede any DXL packet)
     dxlTraction.begin();
-    motLeft.begin();
-    motRight.begin();
+
+    // Enable DXL debug only on the broadcast handle to reduce buffer flood
+    // Individual motor debug is enabled only after successful ping
+    dxlTraction.setDebug(true);
+
+    // --- Ping both servos to confirm bus communication before configuring ---
+    uint32_t model = 0;
+    uint8_t pingL = motLeft.ping(model);
+    model = 0;
+    uint8_t pingR = motRight.ping(model);
+
+    // Enable per-motor debug only if ping succeeded (reduces flood when servos are absent)
+    if (pingL == 0U)
+        motLeft.setDebug(true);
+    if (pingR == 0U)
+        motRight.setDebug(true);
 
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
@@ -528,12 +556,27 @@ static void dxlTractionInit(void)
     HAL_Delay(10U);
 
     // Instant velocity response (profile acceleration = 0)
-    uint32_t profileAccel[2] = {0U, 0U};
-    dxlTraction.setProfileAcceleration(profileAccel);
+    dxlTraction.setProfileAcceleration(0U);
 
-    // Enable torque
-    motLeft.setTorqueEnable(true);
-    motRight.setTorqueEnable(true);
+    // Enable torque — retry indefinitely until confirmed ON
+    uint32_t retryCount = 0U;
+    for (;;)
+    {
+        uint8_t errL = motLeft.setTorqueEnable(true);
+        uint8_t errR = motRight.setTorqueEnable(true);
+        if (errL == 0U && errR == 0U)
+        {
+            debug.log(Level::LogInfo, "[DXL] Traction init: torque ON\n");
+            break;
+        }
+        retryCount++;
+        if (retryCount % 10U == 0U)
+        {
+            debug.log(Level::LogWarn, "[TRACTION_INIT] Torque enable still failing (attempt %lu)\n",
+                      (unsigned long)retryCount);
+        }
+        HAL_Delay(10U);
+    }
 }
 
 #ifdef MODC_ARM
@@ -626,15 +669,15 @@ static bool saveHomePositions(void)
  */
 static void dxlArmInit(void)
 {
-    // Enable RS-485 DE mode on USART2 (idempotent — traction already called begin())
-    armDxl.begin();
-    armMot1a.begin();
-    armMot1b.begin();
-    armMot2.begin();
-    armMot3.begin();
-    armMot4.begin();
-    armMot5.begin();
-    armMot6.begin();
+    // Verbose DXL debug logging for prototype testing
+    armDxl.setDebug(true);
+    armMot1a.setDebug(true);
+    armMot1b.setDebug(true);
+    armMot2.setDebug(true);
+    armMot3.setDebug(true);
+    armMot4.setDebug(true);
+    armMot5.setDebug(true);
+    armMot6.setDebug(true);
 
     // Disable torque for safe reconfiguration
     armMot1a.setTorqueEnable(false);
@@ -715,11 +758,19 @@ static void dxlArmInit(void)
 
     if (!ok)
     {
-        debug.log(Level::LogWarn, "[ARM_INIT] Position read failed — torque not enabled\n");
-        return;
+        // Position read failed — servos may not be communicating yet.
+        // For prototype testing: enable torque anyway using compiled home positions.
+        debug.log(Level::LogWarn, "[ARM_INIT] Position read failed — using compiled home positions\n");
+        cur1Lr[0] = armPos0Mot1Lr[0];
+        cur1Lr[1] = armPos0Mot1Lr[1];
+        cur2 = armPos0Mot2;
+        cur3 = armPos0Mot3;
+        cur4 = armPos0Mot4;
+        cur5 = armPos0Mot5;
+        cur6 = armPos0Mot6;
     }
 
-    // Pre-load goal = current so motors hold position when torque enables
+    // Pre-load goal = current (or home) so motors hold position when torque enables
     armDxl.setGoalPositionEpcm(cur1Lr);
     armMot2.setGoalPositionEpcm(cur2);
     armMot3.setGoalPositionEpcm(cur3);
@@ -728,16 +779,38 @@ static void dxlArmInit(void)
     armMot6.setGoalPositionEpcm(cur6);
     HAL_Delay(10U);
 
-    // Enable torque
-    armMot1a.setTorqueEnable(true);
-    armMot1b.setTorqueEnable(true);
-    armMot2.setTorqueEnable(true);
-    armMot3.setTorqueEnable(true);
-    armMot4.setTorqueEnable(true);
-    armMot5.setTorqueEnable(true);
-    armMot6.setTorqueEnable(true);
+    // Enable torque — retry indefinitely until all motors confirm
+    debug.log(Level::LogInfo, "[ARM_INIT] Enabling torque on %u motors...\n", 7U);
+    uint32_t retryCount = 0U;
+    for (;;)
+    {
+        uint8_t err = 0U;
+        err += (armMot1a.setTorqueEnable(true) != 0U);
+        err += (armMot1b.setTorqueEnable(true) != 0U);
+        err += (armMot2.setTorqueEnable(true) != 0U);
+        err += (armMot3.setTorqueEnable(true) != 0U);
+        err += (armMot4.setTorqueEnable(true) != 0U);
+        err += (armMot5.setTorqueEnable(true) != 0U);
+        err += (armMot6.setTorqueEnable(true) != 0U);
+        if (err == 0U)
+        {
+            debug.log(Level::LogInfo, "[ARM_INIT] Torque enabled OK (attempt %lu)\n",
+                      (unsigned long)(retryCount + 1U));
+            break;
+        }
+        retryCount++;
+        if (retryCount % 10U == 0U)
+        {
+            debug.log(Level::LogWarn, "[ARM_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
+                      err, (unsigned long)retryCount);
+        }
+        HAL_Delay(10U);
+    }
 
-    debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised\n");
+    if (ok)
+        debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised (positions read from servos)\n");
+    else
+        debug.log(Level::LogWarn, "[ARM_INIT] Arm DXL initialised with home positions (servo read failed)\n");
 }
 
 /**
@@ -877,9 +950,29 @@ static void DXL_JOINT_INIT(void)
     jointMot2.setGoalPositionEpcm(cur_2);
     HAL_Delay(10U);
 
-    jointMot1L.setTorqueEnable(true);
-    jointMot1R.setTorqueEnable(true);
-    jointMot2.setTorqueEnable(true);
+    // Enable torque — retry indefinitely until all motors confirm
+    debug.log(Level::LogInfo, "[JOINT_INIT] Enabling torque on %u motors...\n", 3U);
+    uint32_t retryCount = 0U;
+    for (;;)
+    {
+        uint8_t err = 0U;
+        err += (jointMot1L.setTorqueEnable(true) != 0U);
+        err += (jointMot1R.setTorqueEnable(true) != 0U);
+        err += (jointMot2.setTorqueEnable(true) != 0U);
+        if (err == 0U)
+        {
+            debug.log(Level::LogInfo, "[JOINT_INIT] Torque enabled OK (attempt %lu)\n",
+                      (unsigned long)(retryCount + 1U));
+            break;
+        }
+        retryCount++;
+        if (retryCount % 10U == 0U)
+        {
+            debug.log(Level::LogWarn, "[JOINT_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
+                      err, (unsigned long)retryCount);
+        }
+        HAL_Delay(10U);
+    }
 
     // Reset home positions to zero
     jointPos0Mot1Lr[0] = 0;

@@ -9,6 +9,7 @@ debug output with optional timestamps and file logging.
 import sys
 import argparse
 import datetime
+import time
 
 try:
     import serial
@@ -57,11 +58,23 @@ def auto_detect():
 
 def monitor(port, baudrate=115200, timestamp=False, logfile=None):
     """Open the serial port and print incoming data."""
-    try:
-        ser = serial.Serial(port, baudrate, timeout=0.1)
-    except serial.SerialException as e:
-        print(f"Error opening {port}: {e}")
-        sys.exit(1)
+
+    # Retry loop: wait for the device to appear (up to 30 seconds)
+    ser = None
+    max_retries = 60
+    retry_interval = 0.5
+    for attempt in range(max_retries):
+        try:
+            ser = serial.Serial(port, baudrate, timeout=0.1)
+            break
+        except serial.SerialException:
+            if attempt == 0:
+                print(f"Waiting for device on {port}...")
+            if attempt < max_retries - 1:
+                time.sleep(retry_interval)
+            else:
+                print(f"Error: {port} not available after {max_retries * retry_interval:.0f}s")
+                sys.exit(1)
 
     print(f"Connected to {port} at {baudrate} baud. Press Ctrl+C to stop.")
     if logfile:
@@ -147,9 +160,21 @@ def main():
         if port:
             print(f"Auto-detected port: {port}")
         else:
-            print("No serial port auto-detected. Use --list to see available ports.")
-            print("Specify one explicitly: python -m tools.serial_monitor COM5")
-            sys.exit(1)
+            print("No serial port auto-detected. Waiting for device...")
+            port = None
+            max_retries = 60
+            retry_interval = 0.5
+            for attempt in range(max_retries):
+                port = auto_detect()
+                if port:
+                    print(f"Auto-detected port: {port}")
+                    break
+                if attempt < max_retries - 1:
+                    time.sleep(retry_interval)
+            if not port:
+                print("No serial port found after 30s. Use --list to see available ports.")
+                print("Specify one explicitly: python -m tools.serial_monitor COM5")
+                sys.exit(1)
 
     monitor(port, args.baudrate, args.timestamp, args.log)
 
