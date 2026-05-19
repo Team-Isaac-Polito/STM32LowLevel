@@ -324,9 +324,11 @@ extern "C" int main(void)
         while (!CDC_IsConnected())
         {
             GPIOC->BSRR = (1U << 2U);
-            for (volatile int d = 0; d < 50000; d++) {}
+            for (volatile int d = 0; d < 50000; d++)
+            {}
             GPIOC->BSRR = (1U << (2U + 16U));
-            for (volatile int d = 0; d < 50000; d++) {}
+            for (volatile int d = 0; d < 50000; d++)
+            {}
         }
 
         /* Host connected — turn off LED and proceed */
@@ -336,7 +338,8 @@ extern "C" int main(void)
          * and begin consuming from the USB endpoint buffer. Without this,
          * the first few debug messages can be sent before the host is
          * ready to receive them, causing them to be skipped. */
-        for (volatile int d = 0; d < 200000; d++) {}
+        for (volatile int d = 0; d < 200000; d++)
+        {}
     }
 
     // Debug — must be first so all subsequent prints reach USB CDC
@@ -456,7 +459,6 @@ extern "C" int main(void)
         tickBeakStateMachine(now);
 #endif // MODC_ARM
 
-
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -562,7 +564,8 @@ static void dxlTractionInit(void)
         retryCount++;
         if (retryCount % 10U == 0U)
         {
-            debug.log(Level::LogWarn, "[TRACTION_INIT] Torque enable still failing (attempt %lu)\n",
+            debug.log(Level::LogWarn,
+                      "[TRACTION_INIT] Torque enable still failing (attempt %lu)\n",
                       (unsigned long)retryCount);
         }
         HAL_Delay(10U);
@@ -784,15 +787,16 @@ static void dxlArmInit(void)
         err += (armMot6.setTorqueEnable(true) != 0U);
         if (err == 0U)
         {
-            debug.log(Level::LogInfo, "[ARM_INIT] Torque enabled OK (attempt %lu)\n",
-                      (unsigned long)(retryCount + 1U));
+            debug.log(Level::LogInfo, "[ARM_INIT] Torque enabled OK (attempt %lu)\n", (unsigned long)(retryCount + 1U));
             break;
         }
         retryCount++;
         if (retryCount % 10U == 0U)
         {
-            debug.log(Level::LogWarn, "[ARM_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
-                      err, (unsigned long)retryCount);
+            debug.log(Level::LogWarn,
+                      "[ARM_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
+                      err,
+                      (unsigned long)retryCount);
         }
         HAL_Delay(10U);
     }
@@ -951,15 +955,17 @@ static void DXL_JOINT_INIT(void)
         err += (jointMot2.setTorqueEnable(true) != 0U);
         if (err == 0U)
         {
-            debug.log(Level::LogInfo, "[JOINT_INIT] Torque enabled OK (attempt %lu)\n",
-                      (unsigned long)(retryCount + 1U));
+            debug.log(
+                Level::LogInfo, "[JOINT_INIT] Torque enabled OK (attempt %lu)\n", (unsigned long)(retryCount + 1U));
             break;
         }
         retryCount++;
         if (retryCount % 10U == 0U)
         {
-            debug.log(Level::LogWarn, "[JOINT_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
-                      err, (unsigned long)retryCount);
+            debug.log(Level::LogWarn,
+                      "[JOINT_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
+                      err,
+                      (unsigned long)retryCount);
         }
         HAL_Delay(10U);
     }

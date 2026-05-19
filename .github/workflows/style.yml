@@ -19,7 +19,8 @@ jobs:
       - name: Check formatting
         working-directory: STM32LowLevel
         run: |
-          find Core/Src Lib \( -name "*.cpp" -o -name "*.h" -o -name "*.tpp" \) \
+          find Core/Src Lib USB_Device \
+            \( -name "*.cpp" -o -name "*.h" -o -name "*.tpp" \) \
             | xargs clang-format-19 --dry-run --Werror
 
   clang-tidy:
