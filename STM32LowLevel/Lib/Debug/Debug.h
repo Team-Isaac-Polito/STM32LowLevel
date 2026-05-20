@@ -37,15 +37,15 @@ enum class Level : uint8_t
 
 // Debug macros — conditional compilation based on DEBUG/NDEBUG
 #ifdef DEBUG
-    #define LOG_DEBUG(fmt, ...) debug.log(Level::LogDebug, fmt, ##__VA_ARGS__)
-    #define LOG_INFO(fmt, ...)  debug.log(Level::LogInfo,  fmt, ##__VA_ARGS__)
-    #define LOG_WARN(fmt, ...)  debug.log(Level::LogWarn,  fmt, ##__VA_ARGS__)
-    #define DEBUG_ENABLED()     (true)
+#define LOG_DEBUG(fmt, ...) debug.log(Level::LogDebug, fmt, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...) debug.log(Level::LogInfo, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...) debug.log(Level::LogWarn, fmt, ##__VA_ARGS__)
+#define DEBUG_ENABLED() (true)
 #else
-    #define LOG_DEBUG(fmt, ...) ((void)0)
-    #define LOG_INFO(fmt, ...)  ((void)0)
-    #define LOG_WARN(fmt, ...)  ((void)0)
-    #define DEBUG_ENABLED()     (false)
+#define LOG_DEBUG(fmt, ...) ((void)0)
+#define LOG_INFO(fmt, ...) ((void)0)
+#define LOG_WARN(fmt, ...) ((void)0)
+#define DEBUG_ENABLED() (false)
 #endif
 
 /**

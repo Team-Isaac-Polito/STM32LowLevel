@@ -389,14 +389,10 @@ uint8_t DynamixelLL::getPresentVelocityRpm(float (&rpms)[N])
     int16_t temp[_numMotors];
     uint8_t err = syncRead(128, 4, _motorIDs, temp, _numMotors);
     if (err != 0)
-    {
         LOG_WARN("DXL: sync read present velocity error 0x%02X\n", err);
-    }
     else
-    {
         for (uint8_t i = 0; i < _numMotors; i++)
             rpms[i] = static_cast<float>(temp[i]) * 0.229f;
-    }
     return err;
 }
 

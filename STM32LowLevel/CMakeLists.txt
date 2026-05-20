@@ -200,6 +200,15 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -Wl,-u,_printf_float
 )
 
+# Add flash target (requires dfu-util)
+add_custom_target(flash
+    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
+    COMMAND dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D ${CMAKE_PROJECT_NAME}.bin
+    DEPENDS ${CMAKE_PROJECT_NAME}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    COMMENT "Flashing ${CMAKE_PROJECT_NAME}.bin to STM32 via DFU"
+)
+
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx

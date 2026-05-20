@@ -418,9 +418,7 @@ extern "C" int main(void)
         {
             timeBat = now;
             if (!battery.charged())
-            {
                 LOG_WARN("[main] Low battery: %.2f V\n", battery.readVoltage());
-            }
         }
 
         // Telemetry / feedback (25 Hz)
@@ -537,7 +535,6 @@ static void dxlBusInit(USART_TypeDef* usart)
 static void dxlTractionInit(void)
 {
     static const uint8_t n = sizeof(tractionIds) / sizeof(tractionIds[0]);
-
 
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
@@ -794,9 +791,9 @@ static void tickBeakStateMachine(uint32_t now)
             beakState = BeakState::HOLDING;
             beakTempCheckMs = now;
             LOG_INFO("[beak] CLOSING\xe2\x86\x92HOLDING%s\n",
-                      timedOut     ? " (timeout)"
-                      : posReached ? " (pos)"
-                                   : " (load)");
+                     timedOut     ? " (timeout)"
+                     : posReached ? " (pos)"
+                                  : " (load)");
         }
     }
     else if (beakState == BeakState::OPENING)
@@ -829,10 +826,10 @@ static void tickBeakStateMachine(uint32_t now)
             {
                 armMot6.setGoalPWM(BEAK_HOLD_PWM / 2);
                 LOG_WARN("[beak] Thermal: %u deg"
-                          "C >= %u deg"
-                          "C limit, PWM halved\n",
-                          temp,
-                          (uint8_t)BEAK_TEMP_LIMIT);
+                         "C >= %u deg"
+                         "C limit, PWM halved\n",
+                         temp,
+                         (uint8_t)BEAK_TEMP_LIMIT);
             }
             if (hwErr != 0U)
             {

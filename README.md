@@ -26,12 +26,18 @@ Pass the module at CMake configure time: `cmake --preset Debug -DMODULE_DEFINE=M
 
 ## Getting Started
 
+Refer to [docs/getting-started.md](./docs/getting-started.md) for detailed build and flash instructions, including CMake presets and GitHub Actions CI workflow.
+
 **Prerequisites:** CMake ≥ 3.22, Ninja, `arm-none-eabi-gcc`
 
 ```bash
 cd STM32LowLevel/STM32LowLevel
-cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1
-cmake --build build/MK2_MOD1 --parallel
+cmake --preset MK2_MOD1 && cmake --build build/debug/MK2_MOD1 --parallel
+```
+
+For release builds (debug output compiled out, optimized):
+```bash
+cmake --preset MK2_MOD1-release && cmake --build build/release/MK2_MOD1 --parallel
 ```
 
 ---

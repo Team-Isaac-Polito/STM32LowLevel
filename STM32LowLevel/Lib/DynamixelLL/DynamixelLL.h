@@ -509,8 +509,7 @@ class DynamixelLL
     uint8_t _numMotors = 1;       //< Number of motors in sync group
     uint8_t* _motorIDs = nullptr; //< Motor IDs for sync group
 
-    bool _debug = false; //< True if verbose debug logging is enabled.
-    uint8_t _error = 0;  //< Last error byte received from a status packet.
+    uint8_t _error = 0; //< Last error byte received from a status packet.
 
     static void (*activityCb)(void); //< Optional TX/RX activity hook (shared across all instances).
 

@@ -477,12 +477,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
         LOG_WARN("DXL: header timeout\n");
 #ifdef DEBUG
         // Debug: check if USART is still enabled and if any flags are set
-        LOG_DEBUG(
-                      "DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
-                      (unsigned long)_usart->ISR,
-                      (unsigned)LL_USART_IsEnabled(_usart),
-                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
-                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
+        LOG_DEBUG("DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
+                  (unsigned long)_usart->ISR,
+                  (unsigned)LL_USART_IsEnabled(_usart),
+                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
+                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
 #endif
         return result;
     }
