@@ -9,6 +9,11 @@
  *   Debug.setLevel(Level::LOG_INFO);
  *   Debug.log(Level::LOG_INFO, "voltage: %.2f V\n", voltage);
  *   printf("also routes through USB CDC\n");  // via _write retarget
+ *
+ * Conditional compilation:
+ *   In Debug builds (-DDEBUG), LOG_DEBUG / LOG_INFO / LOG_WARN macros
+ *   compile to debug.log() calls. In Release builds (-DNDEBUG), they
+ *   compile to ((void)0) — zero overhead, no string data in flash.
  */
 
 #ifndef DEBUG_H
@@ -30,6 +35,19 @@ enum class Level : uint8_t
     LogDebug = 3,
 };
 
+// Debug macros — conditional compilation based on DEBUG/NDEBUG
+#ifdef DEBUG
+    #define LOG_DEBUG(fmt, ...) debug.log(Level::LogDebug, fmt, ##__VA_ARGS__)
+    #define LOG_INFO(fmt, ...)  debug.log(Level::LogInfo,  fmt, ##__VA_ARGS__)
+    #define LOG_WARN(fmt, ...)  debug.log(Level::LogWarn,  fmt, ##__VA_ARGS__)
+    #define DEBUG_ENABLED()     (true)
+#else
+    #define LOG_DEBUG(fmt, ...) ((void)0)
+    #define LOG_INFO(fmt, ...)  ((void)0)
+    #define LOG_WARN(fmt, ...)  ((void)0)
+    #define DEBUG_ENABLED()     (false)
+#endif
+
 /**
  * @brief Serial debug logger backed by USB CDC.
  *
@@ -48,7 +66,7 @@ class SerialDebug
     /**
      * @brief Write a formatted message via USB CDC if lvl <= active level.
      * @param lvl Verbosity of this message.
-     * @param fmt printf-style format string.
+     * @param fmt printf-style format string (supports %f, %.2f, etc. for floats).
      * @param ... Format arguments.
      */
     void log(Level lvl, const char* fmt, ...);

@@ -368,16 +368,6 @@ class DynamixelLL
     uint8_t reboot();
 
     /**
-     * @brief Enable or disable verbose debug output via the Debug library.
-     *
-     * When enabled, raw packet bytes and status responses are logged to UART5
-     * at Level::LOG_DEBUG.
-     *
-     * @param enable True to enable debug logging, false to disable.
-     */
-    void setDebug(bool enable);
-
-    /**
      * @brief Read a register from multiple servos simultaneously (SYNC_READ).
      *
      * Broadcasts a SYNC_READ packet to all `ids` and collects one status

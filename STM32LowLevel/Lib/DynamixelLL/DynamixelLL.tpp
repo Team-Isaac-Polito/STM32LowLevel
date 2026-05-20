@@ -38,8 +38,7 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
     // Transmit the packet.
     if (!sendPacket(packet, 14))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: read send failed\n");
+        LOG_WARN("DXL: read send failed\n");
         return 1;
     }
 
@@ -47,12 +46,11 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
     DxlStatusPacket response = receivePacket();
     if (!response.valid)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: invalid status packet received\n");
+        LOG_WARN("DXL: invalid status packet received\n");
         return 1u; // Return error when no valid status packet received
     }
-    if (_debug && response.error != 0)
-        debug.log(Level::LogWarn, "DXL: read error 0x%02X\n", response.error);
+    if (response.error != 0)
+        LOG_WARN("DXL: read error 0x%02X\n", response.error);
 
     value = 0;
     for (uint8_t i = 0; i < response.dataLength; i++)
@@ -67,8 +65,7 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
     // Send Sync Read Instruction Packet.
     if (!sendSyncReadPacket(address, dataLength, ids, count))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: sync read send failed\n");
+        LOG_WARN("DXL: sync read send failed\n");
         return 1;
     }
 
@@ -84,14 +81,12 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
         received++;
         if (!response.valid)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: invalid status packet received\n");
+            LOG_WARN("DXL: invalid status packet received\n");
             continue;
         }
         if (response.error != 0)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: sync read error 0x%02X from ID %u\n", response.error, response.id);
+            LOG_WARN("DXL: sync read error 0x%02X from ID %u\n", response.error, response.id);
             retError = response.error;
             continue;
         }
@@ -119,8 +114,7 @@ uint8_t DynamixelLL::setOperatingMode(const uint8_t (&modes)[N])
     {
         if (!(modes[i] == 1 || modes[i] == 3 || modes[i] == 4 || modes[i] == 16))
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: unsupported operating mode %u\n", modes[i]);
+            LOG_WARN("DXL: unsupported operating mode %u\n", modes[i]);
             return 1;
         }
         processed[i] = modes[i];
@@ -246,8 +240,7 @@ uint8_t DynamixelLL::setStatusReturnLevel(const uint8_t (&levels)[N])
     {
         if (levels[i] > 2u)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: invalid SRL %u\n", levels[i]);
+            LOG_WARN("DXL: invalid SRL %u\n", levels[i]);
             return 1;
         }
         processed[i] = levels[i];
@@ -265,8 +258,7 @@ uint8_t DynamixelLL::setID(const uint8_t (&newIDs)[N])
     {
         if (newIDs[i] > 253u)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: invalid ID %u\n", newIDs[i]);
+            LOG_WARN("DXL: invalid ID %u\n", newIDs[i]);
             return 1;
         }
         processed[i] = newIDs[i];
@@ -284,8 +276,7 @@ uint8_t DynamixelLL::setBaudRate(const uint8_t (&baudRates)[N])
     {
         if (baudRates[i] > 7u)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: invalid baud %u\n", baudRates[i]);
+            LOG_WARN("DXL: invalid baud %u\n", baudRates[i]);
             return 1;
         }
         processed[i] = baudRates[i];
@@ -399,8 +390,7 @@ uint8_t DynamixelLL::getPresentVelocityRpm(float (&rpms)[N])
     uint8_t err = syncRead(128, 4, _motorIDs, temp, _numMotors);
     if (err != 0)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: sync read present velocity error 0x%02X\n", err);
+        LOG_WARN("DXL: sync read present velocity error 0x%02X\n", err);
     }
     else
     {
@@ -416,8 +406,8 @@ uint8_t DynamixelLL::getPresentPosition(int32_t (&presentPositions)[N])
     if (checkArraySize(N) != 0)
         return 1;
     uint8_t err = syncRead(132, 4, _motorIDs, presentPositions, _numMotors);
-    if (err != 0 && _debug)
-        debug.log(Level::LogWarn, "DXL: sync read present position error 0x%02X\n", err);
+    if (err != 0)
+        LOG_WARN("DXL: sync read present position error 0x%02X\n", err);
     return err;
 }
 
@@ -427,8 +417,8 @@ uint8_t DynamixelLL::getCurrentLoad(int16_t (&currentLoad)[N])
     if (checkArraySize(N) != 0)
         return 1;
     uint8_t err = syncRead(126, 2, _motorIDs, currentLoad, _numMotors);
-    if (err != 0 && _debug)
-        debug.log(Level::LogWarn, "DXL: sync read current load error 0x%02X\n", err);
+    if (err != 0)
+        LOG_WARN("DXL: sync read current load error 0x%02X\n", err);
     return err;
 }
 
@@ -441,8 +431,7 @@ uint8_t DynamixelLL::getMovingStatus(DxlMovingStatus (&status)[N])
     uint8_t err = syncRead(123, 1, _motorIDs, temp, _numMotors);
     if (err != 0)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: sync read moving status error 0x%02X\n", err);
+        LOG_WARN("DXL: sync read moving status error 0x%02X\n", err);
     }
     else
     {
