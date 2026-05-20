@@ -1,20 +1,18 @@
 /**
  * @file DynamixelLL.h
- * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 (USART2/3 LL backend).
+ * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 (USART2 LL backend).
  *
  * e-manual for DYNAMIXEL protocol 2.0: https://emanual.robotis.com/docs/en/dxl/protocol2/
  * e-Manual for DYNAMIXEL XL430-W250: https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/
+ * e-Manual for DYNAMIXEL XM540-W270: https://emanual.robotis.com/docs/en/dxl/x/xm540-w270/
  *
  * Physical layer:
- *   - DXL Bus 1: USART2, PA2 TX (open-drain, shared TX/RX in half-duplex),
- *                 PA1 DE (direction control for SN74LVC1T45), 2 Mbps
- *   - DXL Bus 2: USART3, PB10 TX (open-drain, shared TX/RX in half-duplex),
- *                 PB14 DE (direction control for SN74LVC1T45), 2 Mbps
+ *   - DXL Bus: USART2, PA2 TX (half-drain, shared TX/RX in half-duplex),
+ *               PA1 DE (direction control for SN74LVC1T45), 2 Mbps
  *
- * The USART is configured in single-wire half-duplex mode (HDSEL=1) with
- * driver enable mode (DEM=1).  The TX pin serves as both transmit and
- * receive.  The DE pin controls the SN74LVC1T45 level shifter direction
- * automatically via hardware.
+ * The USART is configured in single-wire half-duplex mode (HDSEL=1).
+ * The TX pin serves as both transmit and receive.  The DE pin controls
+ * the SN74LVC1T45 level shifter direction via sendPacket().
  */
 
 #ifndef DYNAMIXEL_LL_H
@@ -90,18 +88,17 @@ struct DxlMovingStatus
  * Sync/bulk operations broadcast across all servos in the sync group.
  *
  * Usage:
- *   // After MX_USART2_UART_Init():
+ *   // After MX_USART2_UART_Init() and dxlBusInit(USART2):
  *   DynamixelLL motor(USART2, SERVO_TRACTION_R_ID);
- *   motor.begin();
  *   motor.setTorqueEnable(true);
- *   motor.setGoalVelocity_RPM(10.0f);
+ *   motor.setGoalVelocityRpm(10.0f);
  */
 class DynamixelLL
 {
   public:
     /**
      * @brief Construct a DynamixelLL instance.
-     * @param usart   USART peripheral (USART2 for DXL Bus 1, USART3 for Bus 2).
+     * @param usart   USART peripheral (USART2 for DXL bus).
      * @param servoID Target servo ID (0–253).
      */
     DynamixelLL(USART_TypeDef* usart, uint8_t servoID);
@@ -109,18 +106,6 @@ class DynamixelLL
 
     DynamixelLL(const DynamixelLL&) = delete;
     DynamixelLL& operator=(const DynamixelLL&) = delete;
-
-    /**
-     * @brief Configure USART for TTL half-duplex with hardware DE control.
-     *
-     * Keeps HDSEL=1 (single-wire half-duplex, TX pin shared with RX) and
-     * enables DEM=1 (driver enable mode) so the USART hardware automatically
-     * toggles the DE pin for the external SN74LVC1T45 level shifter.
-     * Flushes any stale RX bytes.
-     *
-     * Must be called once after MX_USARTx_UART_Init().
-     */
-    void begin();
 
     /**
      * @brief Enable synchronous (broadcast) mode for a group of servos.

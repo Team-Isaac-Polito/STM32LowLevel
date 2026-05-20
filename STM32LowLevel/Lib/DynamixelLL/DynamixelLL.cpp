@@ -20,25 +20,6 @@ DynamixelLL::~DynamixelLL()
     disableSync();
 }
 
-void DynamixelLL::begin()
-{
-    LL_USART_Disable(_usart);
-
-    SET_BIT(_usart->CR3, USART_CR3_HDSEL);
-
-    LL_USART_Enable(_usart);
-
-    while (LL_USART_IsActiveFlag_RXNE(_usart))
-        (void)LL_USART_ReceiveData8(_usart);
-
-    // Set default direction: RX mode (DIR = LOW)
-    // This ensures the level shifter is ready to receive data
-    if (_usart == USART2)
-        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
-    else if (_usart == USART3)
-        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = LOW (RX mode)
-}
-
 void DynamixelLL::setDebug(bool enable)
 {
     _debug = enable;
@@ -405,10 +386,7 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     LL_USART_ClearFlag_FE(_usart);
 
     // STEP 1: Switch the SN74LVC1T45 to Transmit mode (A -> B)
-    if (_usart == USART2)
         LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = HIGH (TX mode)
-    else if (_usart == USART3)
-        LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = HIGH (TX mode)
 
     // Transmit all bytes (blocking)
     for (uint16_t i = 0; i < length; ++i)
@@ -439,10 +417,7 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     }
 
     // STEP 2: Switch the SN74LVC1T45 back to Receive mode (B -> A)
-    if (_usart == USART2)
         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
-    else if (_usart == USART3)
-        LL_GPIO_ResetOutputPin(GPIOB, LL_GPIO_PIN_14); // DXL2_DE = LOW (RX mode)
 
     if (activityCb)
         activityCb();

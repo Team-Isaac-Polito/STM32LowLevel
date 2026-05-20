@@ -158,11 +158,11 @@ static uint32_t beakTempCheckMs = 0U; ///< Timestamp of last thermal check in HO
 #endif
 
 #ifdef MODC_JOINT
-// Joint Dynamixel motors (USART3 bus)
-static DynamixelLL jointDxl(USART3, 0); // sync handle for pitch 1a/1b
-static DynamixelLL jointMot1L(USART3, SERVO_JOINT_LEFT_ID);
-static DynamixelLL jointMot1R(USART3, SERVO_JOINT_RIGHT_ID);
-static DynamixelLL jointMot2(USART3, SERVO_JOINT_ROLL_ID);
+// Joint Dynamixel motors (USART2 bus)
+static DynamixelLL jointDxl(USART2, 0); // sync handle for pitch 1a/1b
+static DynamixelLL jointMot1L(USART2, SERVO_JOINT_LEFT_ID);
+static DynamixelLL jointMot1R(USART2, SERVO_JOINT_RIGHT_ID);
+static DynamixelLL jointMot2(USART2, SERVO_JOINT_ROLL_ID);
 static const uint8_t jointIds[] = {SERVO_JOINT_LEFT_ID, SERVO_JOINT_RIGHT_ID};
 
 // Joint home positions
@@ -183,6 +183,7 @@ extern "C" int main(void);
 /* USER CODE BEGIN PFP */
 static void sendFeedback(void);
 static void handleSetpoint(uint8_t msgId, const uint8_t* msgData);
+static void dxlBusInit(USART_TypeDef* usart);
 static void dxlTractionInit(void);
 #ifdef MODC_ARM
 static void dxlArmInit(void);
@@ -356,7 +357,11 @@ extern "C" int main(void)
     canW.begin();
     debug.log(Level::LogInfo, "[main] CAN ready\n");
 
-    // DXL traction — USART2 DE pin + Dynamixel boot sequence
+    // DXL bus init — DE pin direction and RX flush
+    dxlBusInit(USART2);
+    debug.log(Level::LogInfo, "[main] DXL bus (USART2) ready\n");
+
+    // DXL traction — Dynamixel boot sequence
     dxlTractionInit();
     debug.log(Level::LogInfo, "[main] Traction DXL ready\n");
 
@@ -517,14 +522,25 @@ extern "C" void systemClockConfig(void)
 /* USER CODE BEGIN 4 */
 
 /**
+ * Initialize a DXL bus: set DE pin to RX mode and flush stale RX data.
+ * Must be called once after MX_USARTx_UART_Init().
+ */
+static void dxlBusInit(USART_TypeDef* usart)
+{
+    // All motors on USART2 — DE pin is PA1
+    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
+
+    while (LL_USART_IsActiveFlag_RXNE(usart))
+        (void)LL_USART_ReceiveData8(usart);
+}
+
+/**
  * Traction motor initialisation sequence (velocity control mode).
- * Must be called after MX_USART2_UART_Init() (DXL half-duplex on USART2).
+ * Must be called after MX_USART2_UART_Init() and dxlBusInit(USART2).
  */
 static void dxlTractionInit(void)
 {
     static const uint8_t n = sizeof(tractionIds) / sizeof(tractionIds[0]);
-
-    dxlTraction.begin();
 
     // Enable DXL debug on all handles for visibility
     dxlTraction.setDebug(true);
@@ -714,18 +730,6 @@ static void dxlArmInit(void)
     armMot6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
     HAL_Delay(10U);
 
-    // Set home positions now — before the early-return path — so ARM_pos0_* is
-    // always in a deterministic state regardless of whether motors respond.
-    // Flash overrides compiled defaults if a valid HOME_FLASH_MAGIC sentinel exists.
-    armPos0Mot1Lr[0] = armDefaults[0];
-    armPos0Mot1Lr[1] = armDefaults[1];
-    armPos0Mot2 = armDefaults[2];
-    armPos0Mot3 = armDefaults[3];
-    armPos0Mot4 = armDefaults[4];
-    armPos0Mot5 = armDefaults[5];
-    armPos0Mot6 = armDefaults[6];
-    (void)loadHomePositions(); // overrides defaults if Flash contains a valid HOME_FLASH_MAGIC
-
     // Read current positions before enabling torque to prevent violent startup motion
     int32_t cur1Lr[2];
     int32_t cur2, cur3, cur4, cur5, cur6;
@@ -735,19 +739,11 @@ static void dxlArmInit(void)
 
     if (!ok)
     {
-        // Position read failed — servos may not be communicating yet.
-        // For prototype testing: enable torque anyway using compiled home positions.
-        debug.log(Level::LogWarn, "[ARM_INIT] Position read failed — using compiled home positions\n");
-        cur1Lr[0] = armPos0Mot1Lr[0];
-        cur1Lr[1] = armPos0Mot1Lr[1];
-        cur2 = armPos0Mot2;
-        cur3 = armPos0Mot3;
-        cur4 = armPos0Mot4;
-        cur5 = armPos0Mot5;
-        cur6 = armPos0Mot6;
+        debug.log(Level::LogWarn, "[ARM_INIT] Position read failed — torque not enabled\n");
+        return;
     }
 
-    // Pre-load goal = current (or home) so motors hold position when torque enables
+    // Pre-load goal = current so motors hold position when torque enables
     armDxl.setGoalPositionEpcm(cur1Lr);
     armMot2.setGoalPositionEpcm(cur2);
     armMot3.setGoalPositionEpcm(cur3);
@@ -756,7 +752,7 @@ static void dxlArmInit(void)
     armMot6.setGoalPositionEpcm(cur6);
     HAL_Delay(10U);
 
-    // Enable torque
+    // Enable torque — motors stay in place since goal ≈ current
     armMot1a.setTorqueEnable(true);
     armMot1b.setTorqueEnable(true);
     armMot2.setTorqueEnable(true);
@@ -764,20 +760,26 @@ static void dxlArmInit(void)
     armMot4.setTorqueEnable(true);
     armMot5.setTorqueEnable(true);
     armMot6.setTorqueEnable(true);
+    HAL_Delay(10U);
 
-    if (ok)
-        debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised (positions read from servos)\n");
-    else
-        debug.log(Level::LogWarn, "[ARM_INIT] Arm DXL initialised with home positions (servo read failed)\n");
+    // Load home positions — flash overrides compiled defaults
+    armPos0Mot1Lr[0] = armDefaults[0];
+    armPos0Mot1Lr[1] = armDefaults[1];
+    armPos0Mot2 = armDefaults[2];
+    armPos0Mot3 = armDefaults[3];
+    armPos0Mot4 = armDefaults[4];
+    armPos0Mot5 = armDefaults[5];
+    armPos0Mot6 = armDefaults[6];
+    (void)loadHomePositions();
 
-    // Move to home position
+    // Move to home position via profile velocity
     armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
     armMot2.setGoalPositionEpcm(armPos0Mot2);
     armMot3.setGoalPositionEpcm(armPos0Mot3);
     armMot4.setGoalPositionEpcm(armPos0Mot4);
     armMot5.setGoalPositionEpcm(armPos0Mot5);
     armMot6.setGoalPositionEpcm(armPos0Mot6);
-    debug.log(Level::LogInfo, "[ARM_INIT] Moving to home position\n");
+    debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised — moving to home\n");
 }
 
 /**
@@ -864,16 +866,11 @@ static void tickBeakStateMachine(uint32_t now)
 
 #ifdef MODC_JOINT
 /**
- * Initialise all 3 joint Dynamixel motors on USART3.
+ * Initialise all 3 joint Dynamixel motors on USART2.
  * Must be called at startup. Mirrors MODC_ARM_INIT() pattern.
  */
 static void DXL_JOINT_INIT(void)
 {
-    jointDxl.begin();
-    jointMot1L.begin();
-    jointMot1R.begin();
-    jointMot2.begin();
-
     jointMot1L.setTorqueEnable(false);
     jointMot1R.setTorqueEnable(false);
     jointMot2.setTorqueEnable(false);
