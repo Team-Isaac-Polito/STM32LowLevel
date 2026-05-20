@@ -5,20 +5,21 @@
             "name": "default",
             "hidden": true,
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-		    "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
             "cacheVariables": {
             }
         },
         {
-            "name": "Debug",
+            "name": "debug",
+            "hidden": true,
             "inherits": "default",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
-            "name": "Release",
+            "name": "release",
+            "hidden": true,
             "inherits": "default",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
@@ -26,38 +27,60 @@
         },
         {
             "name": "MK2_MOD1",
-            "inherits": "Debug",
             "displayName": "Debug — MK2 MOD1 (HEAD)",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/build/debug/MK2_MOD1",
             "cacheVariables": {
                 "MODULE_DEFINE": "MK2_MOD1"
             }
         },
         {
             "name": "MK2_MOD2",
-            "inherits": "Debug",
             "displayName": "Debug — MK2 MOD2 (MIDDLE)",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/build/debug/MK2_MOD2",
             "cacheVariables": {
                 "MODULE_DEFINE": "MK2_MOD2"
             }
         },
         {
             "name": "MK2_MOD3",
-            "inherits": "Debug",
             "displayName": "Debug — MK2 MOD3 (TAIL)",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/build/debug/MK2_MOD3",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD3"
+            }
+        },
+        {
+            "name": "MK2_MOD1-release",
+            "displayName": "Release — MK2 MOD1 (HEAD)",
+            "inherits": "release",
+            "binaryDir": "${sourceDir}/build/release/MK2_MOD1",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD1"
+            }
+        },
+        {
+            "name": "MK2_MOD2-release",
+            "displayName": "Release — MK2 MOD2 (MIDDLE)",
+            "inherits": "release",
+            "binaryDir": "${sourceDir}/build/release/MK2_MOD2",
+            "cacheVariables": {
+                "MODULE_DEFINE": "MK2_MOD2"
+            }
+        },
+        {
+            "name": "MK2_MOD3-release",
+            "displayName": "Release — MK2 MOD3 (TAIL)",
+            "inherits": "release",
+            "binaryDir": "${sourceDir}/build/release/MK2_MOD3",
             "cacheVariables": {
                 "MODULE_DEFINE": "MK2_MOD3"
             }
         }
     ],
     "buildPresets": [
-        {
-            "name": "Debug",
-            "configurePreset": "Debug"
-        },
-        {
-            "name": "Release",
-            "configurePreset": "Release"
-        },
         {
             "name": "MK2_MOD1",
             "configurePreset": "MK2_MOD1"
@@ -69,6 +92,18 @@
         {
             "name": "MK2_MOD3",
             "configurePreset": "MK2_MOD3"
+        },
+        {
+            "name": "MK2_MOD1-release",
+            "configurePreset": "MK2_MOD1-release"
+        },
+        {
+            "name": "MK2_MOD2-release",
+            "configurePreset": "MK2_MOD2-release"
+        },
+        {
+            "name": "MK2_MOD3-release",
+            "configurePreset": "MK2_MOD3-release"
         }
     ]
 }

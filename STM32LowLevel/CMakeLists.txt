@@ -18,6 +18,15 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
+# Set DEBUG/NDEBUG macros based on build type
+# Debug builds: -DDEBUG enables debug code compilation
+# Release builds: -DNDEBUG disables debug code (standard assert.h behavior)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(DEBUG)
+elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_definitions(NDEBUG)
+endif()
+
 # Set the project name
 set(CMAKE_PROJECT_NAME STM32LowLevel)
 
@@ -179,6 +188,17 @@ target_link_libraries(usb_device_lib PUBLIC stm32cubemx)
 
 # Remove wrong libob.a library dependency when using cpp files
 list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
+
+# Enable floating point printf support via newlib
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -u _scanf_float -u _vscanf_float")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -u _scanf_float -u _vscanf_float")
+
+# Enable newlib nano with float printf support
+# -u _printf_float forces the linker to include float formatting in vsnprintf/printf
+# Without this, %f produces empty output and wastes no extra flash
+target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
+    -Wl,-u,_printf_float
+)
 
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
