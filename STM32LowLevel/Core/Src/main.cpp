@@ -550,26 +550,10 @@ static void dxlTractionInit(void)
     // Instant velocity response (profile acceleration = 0)
     dxlTraction.setProfileAcceleration(0U);
 
-    // Enable torque — retry indefinitely until confirmed ON
-    uint32_t retryCount = 0U;
-    for (;;)
-    {
-        uint8_t errL = motLeft.setTorqueEnable(true);
-        uint8_t errR = motRight.setTorqueEnable(true);
-        if (errL == 0U && errR == 0U)
-        {
-            debug.log(Level::LogInfo, "[DXL] Traction init: torque ON\n");
-            break;
-        }
-        retryCount++;
-        if (retryCount % 10U == 0U)
-        {
-            debug.log(Level::LogWarn,
-                      "[TRACTION_INIT] Torque enable still failing (attempt %lu)\n",
-                      (unsigned long)retryCount);
-        }
-        HAL_Delay(10U);
-    }
+    // Enable torque
+    motLeft.setTorqueEnable(true);
+    motRight.setTorqueEnable(true);
+    debug.log(Level::LogInfo, "[DXL] Traction init: torque ON\n");
 }
 
 #ifdef MODC_ARM
@@ -772,39 +756,28 @@ static void dxlArmInit(void)
     armMot6.setGoalPositionEpcm(cur6);
     HAL_Delay(10U);
 
-    // Enable torque — retry indefinitely until all motors confirm
-    debug.log(Level::LogInfo, "[ARM_INIT] Enabling torque on %u motors...\n", 7U);
-    uint32_t retryCount = 0U;
-    for (;;)
-    {
-        uint8_t err = 0U;
-        err += (armMot1a.setTorqueEnable(true) != 0U);
-        err += (armMot1b.setTorqueEnable(true) != 0U);
-        err += (armMot2.setTorqueEnable(true) != 0U);
-        err += (armMot3.setTorqueEnable(true) != 0U);
-        err += (armMot4.setTorqueEnable(true) != 0U);
-        err += (armMot5.setTorqueEnable(true) != 0U);
-        err += (armMot6.setTorqueEnable(true) != 0U);
-        if (err == 0U)
-        {
-            debug.log(Level::LogInfo, "[ARM_INIT] Torque enabled OK (attempt %lu)\n", (unsigned long)(retryCount + 1U));
-            break;
-        }
-        retryCount++;
-        if (retryCount % 10U == 0U)
-        {
-            debug.log(Level::LogWarn,
-                      "[ARM_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
-                      err,
-                      (unsigned long)retryCount);
-        }
-        HAL_Delay(10U);
-    }
+    // Enable torque
+    armMot1a.setTorqueEnable(true);
+    armMot1b.setTorqueEnable(true);
+    armMot2.setTorqueEnable(true);
+    armMot3.setTorqueEnable(true);
+    armMot4.setTorqueEnable(true);
+    armMot5.setTorqueEnable(true);
+    armMot6.setTorqueEnable(true);
 
     if (ok)
         debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised (positions read from servos)\n");
     else
         debug.log(Level::LogWarn, "[ARM_INIT] Arm DXL initialised with home positions (servo read failed)\n");
+
+    // Move to home position
+    armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
+    armMot2.setGoalPositionEpcm(armPos0Mot2);
+    armMot3.setGoalPositionEpcm(armPos0Mot3);
+    armMot4.setGoalPositionEpcm(armPos0Mot4);
+    armMot5.setGoalPositionEpcm(armPos0Mot5);
+    armMot6.setGoalPositionEpcm(armPos0Mot6);
+    debug.log(Level::LogInfo, "[ARM_INIT] Moving to home position\n");
 }
 
 /**
@@ -911,6 +884,11 @@ static void DXL_JOINT_INIT(void)
     jointMot2.setStatusReturnLevel(2U);
     HAL_Delay(10U);
 
+    jointDxl.setDebug(false);
+    jointMot1L.setDebug(false);
+    jointMot1R.setDebug(false);
+    jointMot2.setDebug(false);
+
     jointDxl.enableSync(jointIds, sizeof(jointIds));
 
     jointMot1L.setDriveMode(false, false, false);
@@ -944,31 +922,10 @@ static void DXL_JOINT_INIT(void)
     jointMot2.setGoalPositionEpcm(cur_2);
     HAL_Delay(10U);
 
-    // Enable torque — retry indefinitely until all motors confirm
-    debug.log(Level::LogInfo, "[JOINT_INIT] Enabling torque on %u motors...\n", 3U);
-    uint32_t retryCount = 0U;
-    for (;;)
-    {
-        uint8_t err = 0U;
-        err += (jointMot1L.setTorqueEnable(true) != 0U);
-        err += (jointMot1R.setTorqueEnable(true) != 0U);
-        err += (jointMot2.setTorqueEnable(true) != 0U);
-        if (err == 0U)
-        {
-            debug.log(
-                Level::LogInfo, "[JOINT_INIT] Torque enabled OK (attempt %lu)\n", (unsigned long)(retryCount + 1U));
-            break;
-        }
-        retryCount++;
-        if (retryCount % 10U == 0U)
-        {
-            debug.log(Level::LogWarn,
-                      "[JOINT_INIT] Torque enable still failing (%u errors, attempt %lu)\n",
-                      err,
-                      (unsigned long)retryCount);
-        }
-        HAL_Delay(10U);
-    }
+    // Enable torque
+    jointMot1L.setTorqueEnable(true);
+    jointMot1R.setTorqueEnable(true);
+    jointMot2.setTorqueEnable(true);
 
     // Reset home positions to zero
     jointPos0Mot1Lr[0] = 0;
