@@ -125,10 +125,10 @@ cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1
 #### Step 2 — Build
 
 ```bash
-cmake --build build/Debug
+cmake --build build/MK2_MOD1
 ```
 
-The output `.elf` is at `build/Debug/STM32LowLevel.elf`.  
+The output `.elf` is at `build/MK2_MOD1/STM32LowLevel.elf`.  
 Memory usage is printed at the end:
 
 ```
@@ -143,7 +143,7 @@ The three module configurations also have named presets in `CMakePresets.json`:
 
 ```bash
 cmake --preset MK2_MOD1   # configures + selects module in one step
-cmake --build build/Debug
+cmake --build build/MK2_MOD1
 ```
 
 ---
@@ -168,10 +168,10 @@ Put your STM32G474RET6 board into DFU bootloader mode. Then, inside `STM32LowLev
 
 ```bash
 # 1. Convert your compiled ELF to a raw uncompressed binary file
-arm-none-eabi-objcopy -O binary build/Debug/STM32LowLevel.elf build/Debug/STM32LowLevel.bin
+arm-none-eabi-objcopy -O binary build/MK2_MOD1/STM32LowLevel.elf build/MK2_MOD1/STM32LowLevel.bin
 
 # 2. Flash the raw binary directly to the MCU internal flash memory
-dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D build/Debug/STM32LowLevel.bin
+dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D build/MK2_MOD1/STM32LowLevel.bin
 ```
 where:
    - `0483:df11` (Vendor ID : Product ID): hardcoded USB identifier for the factory bootloader programmed by STMicroelectronics. This is the default DFU mode that all STM32G4 series chips enter when BOOT0 is tied high.
@@ -180,7 +180,21 @@ where:
 
 ---
 
-## 8. (Optional) STM32CubeMX — viewing the .ioc file
+## 8. USB CDC Debug Output
+
+The firmware routes all debug output (`debug.log()`) to a USB CDC (Communications Device Class) Virtual COM Port. No external adapter is needed — just connect the board's USB FS port to your PC.
+
+For detailed usage of the serial monitor tool, see [tools/serial_monitor/README.md](../tools/serial_monitor/README.md).
+
+### First Connection Behavior
+
+When the board powers on or resets:
+
+1. The USB CDC port enumerates as a Virtual COM Port on the host PC
+2. The firmware waits for the host DTR signal before proceeding with motor initialization
+3. If no USB connection is detected, the firmware proceeds after a timeout
+
+## (Optional) STM32CubeMX — viewing the .ioc file
 
 The project includes a `STM32LowLevel.ioc` file that describes all peripheral configurations (GPIO, USART, CAN, DMA, clocks, etc.). You don't need CubeMX to **build** or **flash** the firmware, but you do need it if you want to **view or modify** the peripheral setup and regenerate the LL/HAL init code.
 
@@ -196,4 +210,5 @@ The project includes a `STM32LowLevel.ioc` file that describes all peripheral co
 
 ## Notes
 
-- Reconfigure (re-run `cmake --preset ...`) whenever you switch modules. The build directory is shared — forgetting to reconfigure builds the last-configured module silently.
+- Reconfigure (re-run `cmake --preset ...`) whenever you switch modules. The build directory is module-specific — forgetting to reconfigure builds the wrong module silently.
+- The USB CDC port replaces the old UART5 debug output. No UART-to-serial adapter is needed for basic debug output.

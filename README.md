@@ -30,6 +30,7 @@ Pass the module at CMake configure time: `cmake --preset Debug -DMODULE_DEFINE=M
 
 ```bash
 cd STM32LowLevel/STM32LowLevel
+cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1
 cmake --build build/MK2_MOD1 --parallel
 ```
 
