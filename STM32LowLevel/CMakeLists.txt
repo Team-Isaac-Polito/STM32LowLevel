@@ -200,14 +200,29 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE
     -Wl,-u,_printf_float
 )
 
-# Add flash target (requires dfu-util)
-add_custom_target(flash
-    COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
-    COMMAND dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D ${CMAKE_PROJECT_NAME}.bin
-    DEPENDS ${CMAKE_PROJECT_NAME}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-    COMMENT "Flashing ${CMAKE_PROJECT_NAME}.bin to STM32 via DFU"
-)
+## Add flash target (requires dfu-util)
+## On Windows hosts, a batch script handles native dfu-util detection
+## and interactive WSL fallback. On other hosts, dfu-util is called directly.
+if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
+    add_custom_target(flash
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
+        # Calls the .cmd script from your project root and passes the binary path
+        COMMAND cmd.exe /c "${CMAKE_SOURCE_DIR}/cmake/flash_stm32.cmd" "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.bin"
+        DEPENDS ${CMAKE_PROJECT_NAME}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Flashing ${CMAKE_PROJECT_NAME}.bin to STM32 via DFU"
+        USES_TERMINAL
+    )
+else()
+    add_custom_target(flash
+        COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
+        COMMAND dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D ${CMAKE_PROJECT_NAME}.bin
+        DEPENDS ${CMAKE_PROJECT_NAME}
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+        COMMENT "Flashing ${CMAKE_PROJECT_NAME}.bin to STM32 via DFU"
+        USES_TERMINAL
+    )
+endif()
 
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}

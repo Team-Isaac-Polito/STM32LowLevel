@@ -104,65 +104,88 @@ STM32LowLevel/          ← repo root
 
 ---
 
-## 6. Build
+## 6. Build & Flash Workflows
 
 All commands run from inside `STM32LowLevel/STM32LowLevel/`.
 
-#### One-line build
+### Option A — The Single-Command Workflow (Recommended with Hardware)
 
-The simplest way to build — specify module and optionally `release`:
-
-```bash
-cmake --preset MK2_MOD1 && cmake --build --preset MK2_MOD1
-```
-
-For a release build (debug output compiled out, size-optimized):
+If your flashing environment is configured (either native Windows `dfu-util` or WSL + `usbipd` with `dfu-util` installed on the WSL side), you can execute the entire configuration, compilation, and flashing sequence with a single command utilizing CMake Workflows (requires CMake 3.25+):
 
 ```bash
-cmake --preset MK2_MOD1-release && cmake --build --preset MK2_MOD1-release
+# Debug target workflow
+cmake --workflow --preset MK2_MOD1-flash
+
+# Release target workflow
+cmake --workflow --preset MK2_MOD1-release-flash
 ```
 
-**Note:** The first time you use a preset, you must run the configure step (`cmake --preset`). Subsequent builds only need `cmake --build --preset`:
+**Note:** The workflow presets can still be used without the hardware connected. If the flashing step fails, the workflow will stop after the build step, leaving you with a compiled binary in `build/debug/MK2_MOD1/` or `build/release/MK2_MOD1/` that you can flash manually later.
+
+### Option B — Manual One-Line Build (Compile Only)
+
+To compile the project binary without launching the flashing routine:
 
 ```bash
 # First time (configure + build)
 cmake --preset MK2_MOD1 && cmake --build --preset MK2_MOD1
-# Subsequent builds (just build)
+# Subsequent debug builds (just build)
 cmake --build --preset MK2_MOD1
+
+# Release target compilation (configure + build)
+cmake --preset MK2_MOD1-release && cmake --build --preset MK2_MOD1-release
+# Subsequent release builds (just build)
+cmake --build --preset MK2_MOD1-release
 ```
 
-#### Available presets
+### Available Presets
 
-| Preset | Build dir | Debug output | Optimization |
-|---|---|---|---|
-| `MK2_MOD1` | `build/debug/MK2_MOD1` | Enabled | `-O0 -g3` |
-| `MK2_MOD2` | `build/debug/MK2_MOD2` | Enabled | `-O0 -g3` |
-| `MK2_MOD3` | `build/debug/MK2_MOD3` | Enabled | `-O0 -g3` |
-| `MK2_MOD1-release` | `build/release/MK2_MOD1` | Compiled out | `-Os -g0` |
-| `MK2_MOD2-release` | `build/release/MK2_MOD2` | Compiled out | `-Os -g0` |
-| `MK2_MOD3-release` | `build/release/MK2_MOD3` | Compiled out | `-Os -g0` |
+The project supports the following target presets across debug, release, and automated workflow configurations:
 
-**Debug builds** (`-DDEBUG`): All `debug.log()` calls compile normally. Full packet hex dumps and error messages are available via USB CDC.
-
-**Release builds** (`-DNDEBUG`): All debug logging is completely removed by the preprocessor — zero overhead from string formatting, USB CDC transfers, or branch instructions. Only warnings and errors remain.
+| Target Module | Debug Preset (With Logs) | Release Preset (Optimized) | Workflow (Debug + Flash) | Workflow (Release + Flash) |
+| --- | --- | --- | --- | --- |
+| **Head (MOD1)** | `MK2_MOD1` | `MK2_MOD1-release` | `MK2_MOD1-flash` | `MK2_MOD1-release-flash` |
+| **Middle (MOD2)** | `MK2_MOD2` | `MK2_MOD2-release` | `MK2_MOD2-flash` | `MK2_MOD2-release-flash` |
+| **Tail (MOD3)** | `MK2_MOD3` | `MK2_MOD3-release` | `MK2_MOD3-flash` | `MK2_MOD3-release-flash` |
 
 ---
 
-## 7. Flashing
+## 7. Flashing & WSL Setup
 
-**Note:** This flashing guide is written for the Linux/Ubuntu environment.
+Flashing is handled automatically via a custom script wrapper called by the `flash` target or workflow presets. On Windows hosts, the script automatically attempts a **WSL Fallback** if native Windows binaries for `dfu-util` are missing.
 
-For WSL users, you must first attach the physical USB device to your WSL instance using `usbipd` from an Administrator PowerShell prompt before running the flashing commands:
+### WSL Passthrough Prerequisites
+
+If you are running on Windows ARM64 (other Windows architectures can also use this setup) and your target `dfu-util` utility resides only inside WSL, you must pass the physical micro-controller across the virtualization layer using `usbipd`:
+
+1. Boot the board into **DFU Bootloader Mode** using the switch.
+2. Open an **Administrator PowerShell** on Windows and attach the device:
 ```powershell
-# In Windows PowerShell (Admin)
 usbipd list                        # Find the Bus ID for "DFU in FS Mode" (typically 0483:df11)
-usbipd bind --busid <ID>           # Bind the device to WSL
-usbipd attach --wsl --busid <ID>   # Bind it to your active WSL instance
+usbipd bind --busid <ID>           # Bind the device to WSL (First time only)
+usbipd attach --wsl --busid <ID>   # Route the hardware into WSL instance
 ```
 
 *See our outline documentation [Step 3: Setting Up USBIPD in PowerShell](https://docs.teamisaac.it/doc/kernel-and-usbipd-B5cYVhJ1Gv) for detailed setup instructions.*
 
-### Flashing Procedure
+### Critical WSL Default Distro Quirk
+
+When executing the scripted fallback from Windows, the script boots into your system's **Default WSL Distribution**. If you have multiple distributions (or use Docker Desktop), this can cause a `dfu-util: command not found` error even if it works in your favorite terminal.
+
+Ensure your preferred Linux distribution (where `dfu-util` is installed) is explicitly configured as your Windows default:
+
+```powershell
+# Check current defaults (marked with an asterisk *)
+wsl -l -v
+
+# Set your primary development distro as default
+wsl --set-default <Your-Distro-Name>  # e.g., wsl --set-default Ubuntu
+
+```
+
+Once `usbipd` is attached and your default distro is correct, running `cmake --workflow --preset MK2_MOD1-flash` will open an interactive prompt window, cleanly bridging your Windows build tree to your WSL flashing environment.
+
+### Manual Flashing Procedure
 
 Put your STM32G474RET6 board into DFU bootloader mode. Then, inside `STM32LowLevel/STM32LowLevel/`, run these commands sequentially:
 

@@ -1,5 +1,5 @@
 {
-    "version": 3,
+    "version": 6,
     "configurePresets": [
         {
             "name": "default",
@@ -81,29 +81,45 @@
         }
     ],
     "buildPresets": [
+        { "name": "MK2_MOD1", "configurePreset": "MK2_MOD1" },
+        { "name": "MK2_MOD1-release", "configurePreset": "MK2_MOD1-release" },
+        { "name": "MK2_MOD1-flash", "configurePreset": "MK2_MOD1", "targets": ["flash"] },
+        { "name": "MK2_MOD1-release-flash", "configurePreset": "MK2_MOD1-release", "targets": ["flash"] },
+
+        { "name": "MK2_MOD2", "configurePreset": "MK2_MOD2" },
+        { "name": "MK2_MOD2-release", "configurePreset": "MK2_MOD2-release" },
+        { "name": "MK2_MOD2-flash", "configurePreset": "MK2_MOD2", "targets": ["flash"] },
+        { "name": "MK2_MOD2-release-flash", "configurePreset": "MK2_MOD2-release", "targets": ["flash"] },
+
+        { "name": "MK2_MOD3", "configurePreset": "MK2_MOD3" },
+        { "name": "MK2_MOD3-release", "configurePreset": "MK2_MOD3-release" },
+        { "name": "MK2_MOD3-flash", "configurePreset": "MK2_MOD3", "targets": ["flash"] },
+        { "name": "MK2_MOD3-release-flash", "configurePreset": "MK2_MOD3-release", "targets": ["flash"] }
+    ],
+    "workflowPresets": [
         {
-            "name": "MK2_MOD1",
-            "configurePreset": "MK2_MOD1"
+            "name": "MK2_MOD1-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD1" }, { "type": "build", "name": "MK2_MOD1-flash" }]
         },
         {
-            "name": "MK2_MOD2",
-            "configurePreset": "MK2_MOD2"
+            "name": "MK2_MOD1-release-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD1-release" }, { "type": "build", "name": "MK2_MOD1-release-flash" }]
         },
         {
-            "name": "MK2_MOD3",
-            "configurePreset": "MK2_MOD3"
+            "name": "MK2_MOD2-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD2" }, { "type": "build", "name": "MK2_MOD2-flash" }]
         },
         {
-            "name": "MK2_MOD1-release",
-            "configurePreset": "MK2_MOD1-release"
+            "name": "MK2_MOD2-release-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD2-release" }, { "type": "build", "name": "MK2_MOD2-release-flash" }]
         },
         {
-            "name": "MK2_MOD2-release",
-            "configurePreset": "MK2_MOD2-release"
+            "name": "MK2_MOD3-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD3" }, { "type": "build", "name": "MK2_MOD3-flash" }]
         },
         {
-            "name": "MK2_MOD3-release",
-            "configurePreset": "MK2_MOD3-release"
+            "name": "MK2_MOD3-release-flash",
+            "steps": [{ "type": "configure", "name": "MK2_MOD3-release" }, { "type": "build", "name": "MK2_MOD3-release-flash" }]
         }
     ]
 }
