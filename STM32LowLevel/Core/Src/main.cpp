@@ -185,6 +185,9 @@ static void sendFeedback(void);
 static void handleSetpoint(uint8_t msgId, const uint8_t* msgData);
 static void dxlBusInit(USART_TypeDef* usart);
 static void dxlTractionInit(void);
+#ifdef DEBUG
+static void i2cBusScan(void);
+#endif
 #ifdef MODC_ARM
 static void dxlArmInit(void);
 static bool loadHomePositions(void);
@@ -377,6 +380,11 @@ extern "C" int main(void)
     LOG_INFO("[main] Joint DXL ready\n");
 #endif
 
+    // 4. I2C bus scan — detect all devices
+#ifdef DEBUG
+    i2cBusScan();
+#endif
+
     // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
 #ifdef MODC_YAW
     encoderYaw.setZero();
@@ -514,6 +522,73 @@ extern "C" void systemClockConfig(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+#ifdef DEBUG
+/**
+ * Scan I2C1 bus and log all responding devices.
+ * Uses robust transfer with bus recovery on errors.
+ */
+static void i2cBusScan(void)
+{
+    LOG_INFO("[I2C] Scanning bus...\n");
+
+    // If bus is busy, try recovery first
+    if (I2C1->ISR & I2C_ISR_BUSY)
+    {
+        LOG_INFO("[I2C] Bus busy, attempting recovery...\n");
+        LL_I2C_GenerateStopCondition(I2C1);
+        for (volatile uint32_t i = 0; i < 5000; i++);
+        if (I2C1->ISR & I2C_ISR_BUSY)
+        {
+            LOG_INFO("[I2C] Recovery failed, skipping scan\n");
+            return;
+        }
+    }
+
+    uint8_t foundCount = 0;
+    for (uint8_t addr = 8U; addr < 0x78U; addr++)
+    {
+        // Wait for bus ready
+        uint32_t busyTo = 100000U;
+        while (I2C1->ISR & I2C_ISR_BUSY)
+            if (--busyTo == 0U)
+                break;
+        if (I2C1->ISR & I2C_ISR_BUSY)
+            continue;
+
+        // Clear errors
+        I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
+
+        // Send address with 0-byte write (just to check ACK)
+        LL_I2C_HandleTransfer(I2C1,
+                              static_cast<uint32_t>(addr) << 1U,
+                              LL_I2C_ADDRSLAVE_7BIT,
+                              0U,
+                              LL_I2C_MODE_AUTOEND,
+                              LL_I2C_GENERATE_START_WRITE);
+
+        uint32_t timeout = 100000U;
+        while (!(I2C1->ISR & I2C_ISR_STOPF) && !(I2C1->ISR & I2C_ISR_NACKF))
+            if (--timeout == 0U)
+                break;
+
+        bool nack = (I2C1->ISR & I2C_ISR_NACKF) != 0;
+        bool stopf = (I2C1->ISR & I2C_ISR_STOPF) != 0;
+
+        if (nack)
+            I2C1->ICR = I2C_ICR_NACKCF;
+        if (stopf)
+            I2C1->ICR = I2C_ICR_STOPCF;
+
+        if (stopf && !nack)
+        {
+            LOG_INFO("[I2C] Device found at 0x%02X\n", addr);
+            foundCount++;
+        }
+    }
+    LOG_INFO("[I2C] Scan complete, %d device(s) found\n", foundCount);
+}
+#endif
 
 /**
  * Initialize a DXL bus: set DE pin to RX mode and flush stale RX data.
