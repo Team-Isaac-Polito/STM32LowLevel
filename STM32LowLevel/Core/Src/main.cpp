@@ -612,6 +612,15 @@ static void dxlTractionInit(void)
 {
     static const uint8_t n = sizeof(tractionIds) / sizeof(tractionIds[0]);
 
+    // Auto-scan and update all traction motors to 2 Mbps (baud rate index 4)
+    uint8_t targetBaud = 4U;
+    uint8_t errL = motLeft.setBaudRate(targetBaud);
+    uint8_t errR = motRight.setBaudRate(targetBaud);
+    if (errL == 0U && errR == 0U)
+        LOG_INFO("[DXL] Traction baud rate set to 2 Mbps\n");
+    else
+        LOG_WARN("[DXL] Traction baud update errors: L=0x%02X R=0x%02X\n", errL, errR);
+
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
     motRight.setTorqueEnable(false);
@@ -727,7 +736,21 @@ static bool saveHomePositions(void)
  */
 static void dxlArmInit(void)
 {
-
+    // Auto-scan and update all arm motors to 2 Mbps (baud rate index 7)
+    uint8_t targetBaud = 4U;
+    uint8_t err = 0U;
+    err += (armMot1a.setBaudRate(targetBaud) != 0U);
+    err += (armMot1b.setBaudRate(targetBaud) != 0U);
+    err += (armMot2.setBaudRate(targetBaud) != 0U);
+    err += (armMot3.setBaudRate(targetBaud) != 0U);
+    err += (armMot4.setBaudRate(targetBaud) != 0U);
+    err += (armMot5.setBaudRate(targetBaud) != 0U);
+    err += (armMot6.setBaudRate(targetBaud) != 0U);
+    if (err == 0U)
+        LOG_INFO("[ARM_INIT] Arm baud rate set to 2 Mbps\n");
+    else
+        LOG_WARN("[ARM_INIT] Arm baud update errors: %u motors\n", err);
+    
     // Disable torque for safe reconfiguration
     armMot1a.setTorqueEnable(false);
     armMot1b.setTorqueEnable(false);
@@ -925,6 +948,17 @@ static void tickBeakStateMachine(uint32_t now)
  */
 static void DXL_JOINT_INIT(void)
 {
+    // Auto-scan and update all joint motors to 2 Mbps (baud rate index 7)
+    uint8_t targetBaud = 4U;
+    uint8_t err = 0U;
+    err += (jointMot1L.setBaudRate(targetBaud) != 0U);
+    err += (jointMot1R.setBaudRate(targetBaud) != 0U);
+    err += (jointMot2.setBaudRate(targetBaud) != 0U);
+    if (err == 0U)
+        LOG_INFO("[JOINT_INIT] Joint baud rate set to 2 Mbps\n");
+    else
+        LOG_WARN("[JOINT_INIT] Joint baud update errors: %u motors\n", err);
+
     jointMot1L.setTorqueEnable(false);
     jointMot1R.setTorqueEnable(false);
     jointMot2.setTorqueEnable(false);

@@ -227,7 +227,87 @@ uint8_t DynamixelLL::setBaudRate(uint8_t baudRate)
         LOG_WARN("DXL: invalid baud %u\n", baudRate);
         return 1u;
     }
-    return writeRegister(8u, baudRate, 1u);
+
+    // Candidate baud rates to scan, fastest first.
+    // Index 7 = 4.5M, 4 = 2M, 3 = 1M, 2 = 115200, 1 = 57600, 0 = 9600
+    static const uint32_t candidateBauds[] = {
+        4500000U, 2000000U, 1000000U, 115200U, 57600U, 9600U
+    };
+    static const uint8_t candidateIndices[] = {7U, 4U, 3U, 2U, 1U, 0U};
+    static const uint8_t numCandidates = sizeof(candidateBauds) / sizeof(candidateBauds[0]);
+
+    // Step 1: Scan to find the motor's current baud rate.
+    // Try each candidate speed until ping succeeds.
+    uint8_t foundIndex = 0xFFU; // 0xFF = not found
+    uint32_t originalBaud = LL_USART_GetBaudRate(_usart, DXL_PCLK_HZ,
+                                                 LL_USART_PRESCALER_DIV1,
+                                                 LL_USART_OVERSAMPLING_16);
+
+    for (uint8_t i = 0U; i < numCandidates; i++)
+    {
+        LL_USART_SetBaudRate(_usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1,
+                             LL_USART_OVERSAMPLING_16, candidateBauds[i]);
+
+        uint32_t modelNumber = 0U;
+        uint8_t pingErr = ping(modelNumber);
+
+        if (pingErr == 0U)
+        {
+            foundIndex = i;
+            LOG_DEBUG("DXL: ID=%u found at baud index %u (%lu bps)\n",
+                          _servoID, candidateIndices[i], (unsigned long)candidateBauds[i]);
+            break;
+        }
+    }
+
+    if (foundIndex == 0xFFU)
+    {
+        LL_USART_SetBaudRate(_usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1,
+                             LL_USART_OVERSAMPLING_16, originalBaud);
+        LOG_WARN("DXL: ID=%u not found at any baud rate\n", _servoID);
+        return 1u;
+    }
+
+    // Step 2: If already at target, restore USART to target speed and return
+    if (candidateIndices[foundIndex] == baudRate)
+    {
+        LOG_DEBUG("DXL: ID=%u already at baud index %u, no change needed\n",
+                      _servoID, baudRate);
+        LL_USART_SetBaudRate(_usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1,
+                             LL_USART_OVERSAMPLING_16, candidateBauds[foundIndex]);
+        return 0U;
+    }
+
+    // Step 3: Write target baud rate to motor EEPROM (address 8).
+    LOG_DEBUG("DXL: ID=%u migrating baud %u -> %u\n",
+                  _servoID, candidateIndices[foundIndex], baudRate);
+
+    uint8_t writeErr = writeRegister(8u, baudRate, 1u);
+    if (writeErr != 0U)
+    {
+        LL_USART_SetBaudRate(_usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1,
+                             LL_USART_OVERSAMPLING_16, candidateBauds[foundIndex]);
+        LOG_WARN("DXL: ID=%u EEPROM write failed (err=0x%02X)\n", _servoID, writeErr);
+        return writeErr;
+    }
+
+    // Step 4: Delay for servo to apply EEPROM change (~100ms per datasheet).
+    HAL_Delay(100U);
+
+    // Step 5: Switch USART to target baud rate.
+    for (uint8_t i = 0U; i < numCandidates; i++)
+    {
+        if (candidateIndices[i] == baudRate)
+        {
+            LL_USART_SetBaudRate(_usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1,
+                                 LL_USART_OVERSAMPLING_16, candidateBauds[i]);
+            LOG_DEBUG("DXL: ID=%u USART switched to %lu bps\n",
+                          _servoID, (unsigned long)candidateBauds[i]);
+            break;
+        }
+    }
+
+    return 0U;
 }
 
 uint8_t DynamixelLL::setReturnDelayTime(uint8_t delayTime)

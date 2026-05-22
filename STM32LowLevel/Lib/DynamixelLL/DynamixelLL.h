@@ -8,7 +8,7 @@
  *
  * Physical layer:
  *   - DXL Bus: USART2, PA2 TX (half-drain, shared TX/RX in half-duplex),
- *               PA1 DE (direction control for SN74LVC1T45), 2 Mbps
+ *               PA1 DE (direction control for SN74LVC1T45), 4.5 Mbps
  *
  * The USART is configured in single-wire half-duplex mode (HDSEL=1).
  * The TX pin serves as both transmit and receive.  The DE pin controls
@@ -25,6 +25,10 @@
 #include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_hal.h" // HAL_GetTick() for timeouts
 #include "Debug.h"
+
+#ifndef DXL_PCLK_HZ
+#define DXL_PCLK_HZ 170000000U ///< USART2/3 peripheral clock (PCLK1) in Hz
+#endif
 
 // clang-format off
 // Instruction codes
@@ -215,10 +219,15 @@ class DynamixelLL
     uint8_t setID(uint8_t newID);
 
     /**
-     * @brief Set the baud rate index (control table address 8).
+     * @brief Set the baud rate index (control table address 8) with auto-scan.
      *
-     * @param baudRate Baud rate index (3 = 1 Mbps, 4 = 2 Mbps, 7 = 4.5 Mbps).
-     * @return Error byte from status packet (0 = success).
+     * Before writing, scans the motor's current baud rate. If the motor
+     * is already at the requested rate, no EEPROM write is performed. 
+     * Otherwise, writes the target baud rate index to EEPROM (address 8),
+     * delays for the servo to settle, and restores the USART to the target speed.
+     *
+     * @param baudRate Target baud rate index (7 = 4.5 Mbps recommended).
+     * @return 0 on success, non-zero on error (scan failed or write failed).
      */
     uint8_t setBaudRate(uint8_t baudRate);
 
@@ -448,7 +457,7 @@ class DynamixelLL
     template <uint8_t N>
     uint8_t setID(const uint8_t (&newIDs)[N]);
 
-    /** @brief Set baud rate index for each motor in the sync group. */
+    /** @brief Set baud rate index with auto-scan for each motor in the sync group. */
     template <uint8_t N>
     uint8_t setBaudRate(const uint8_t (&baudRates)[N]);
 

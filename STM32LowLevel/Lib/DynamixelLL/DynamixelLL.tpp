@@ -271,17 +271,36 @@ uint8_t DynamixelLL::setBaudRate(const uint8_t (&baudRates)[N])
 {
     if (checkArraySize(N) != 0)
         return 1;
-    uint32_t processed[_numMotors];
-    for (uint8_t i = 0; i < _numMotors; i++)
+
+    // Delegate to per-motor setBaudRate for each motor in the sync group.
+    // Each motor is scanned and updated individually.
+    uint8_t retErr = 0U;
+    for (uint8_t i = 0U; i < _numMotors; i++)
     {
-        if (baudRates[i] > 7u)
+        DynamixelLL scanner(_usart, _motorIDs[i]);
+        uint8_t err = scanner.setBaudRate(baudRates[i]);
+        if (err != 0U)
         {
-            LOG_WARN("DXL: invalid baud %u\n", baudRates[i]);
-            return 1;
+            LOG_WARN("DXL: sync baud migrate failed for ID=%u (err=0x%02X)\n", _motorIDs[i], err);
+            retErr = err;
         }
-        processed[i] = baudRates[i];
     }
-    return syncWrite(8, 1, _motorIDs, processed, _numMotors) ? 0u : 1u;
+
+    // Ensure USART is at the target baud rate (first motor's target)
+    static const uint32_t candidateBauds[] = {4500000U, 2000000U, 1000000U, 115200U, 57600U, 9600U};
+    static const uint8_t candidateIndices[] = {7U, 4U, 3U, 2U, 1U, 0U};
+    static const uint8_t numCandidates = sizeof(candidateBauds) / sizeof(candidateBauds[0]);
+    for (uint8_t i = 0U; i < numCandidates; i++)
+    {
+        if (candidateIndices[i] == baudRates[0])
+        {
+            LL_USART_SetBaudRate(
+                _usart, DXL_PCLK_HZ, LL_USART_PRESCALER_DIV1, LL_USART_OVERSAMPLING_16, candidateBauds[i]);
+            break;
+        }
+    }
+
+    return retErr;
 }
 
 template <uint8_t N>
