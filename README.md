@@ -26,13 +26,33 @@ Pass the module at CMake configure time: `cmake --preset Debug -DMODULE_DEFINE=M
 
 ## Getting Started
 
-**Prerequisites:** CMake ≥ 3.22, Ninja, `arm-none-eabi-gcc`
+Refer to [docs/getting-started.md](./docs/getting-started.md) for detailed environment setup, build, and flashing instructions.
 
+**Prerequisites:** CMake ≥ 3.25 (required for workflows), Ninja, `arm-none-eabi-gcc`.
+
+### Building & Flashing
+
+If you only want to compile the code without triggering the flashing tool:
 ```bash
 cd STM32LowLevel/STM32LowLevel
-cmake --preset Debug -DMODULE_DEFINE=MK2_MOD1
-cmake --build build/MK2_MOD1 --parallel
+cmake --preset MK2_MOD1 && cmake --build --preset MK2_MOD1
 ```
+
+For release builds (optimized, debug logging stripped out):
+```bash
+cmake --preset MK2_MOD1-release && cmake --build --preset MK2_MOD1-release
+```
+
+If you want to compile and flash your code directly to your target module using integrated CMake Workflows:
+```bash
+# Flash Debug build (Includes runtime logging)
+cmake --workflow --preset MK2_MOD1-flash
+
+# Flash Release build (Optimized, logs compiled out)
+cmake --workflow --preset MK2_MOD1-release-flash
+```
+
+*Change MK2_MOD1 to MK2_MOD2 (Middle) or MK2_MOD3 (Tail) depending on your target board.*
 
 ---
 

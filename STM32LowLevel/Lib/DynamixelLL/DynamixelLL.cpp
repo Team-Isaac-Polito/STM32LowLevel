@@ -20,17 +20,11 @@ DynamixelLL::~DynamixelLL()
     disableSync();
 }
 
-void DynamixelLL::setDebug(bool enable)
-{
-    _debug = enable;
-}
-
 void DynamixelLL::enableSync(const uint8_t* motorIDs, uint8_t numMotors)
 {
     if (numMotors < 2)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: enableSync requires >= 2 motors\n");
+        LOG_WARN("DXL: enableSync requires >= 2 motors\n");
         return;
     }
     disableSync();
@@ -152,8 +146,7 @@ uint8_t DynamixelLL::setOperatingMode(uint8_t mode)
 {
     if (!(mode == 1 || mode == 3 || mode == 4 || mode == 16))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: unsupported operating mode %u\n", mode);
+        LOG_WARN("DXL: unsupported operating mode %u\n", mode);
         return 1u;
     }
     return writeRegister(11u, mode, 1u);
@@ -211,8 +204,7 @@ uint8_t DynamixelLL::setStatusReturnLevel(uint8_t level)
 {
     if (level > 2u)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: invalid SRL %u\n", level);
+        LOG_WARN("DXL: invalid SRL %u\n", level);
         return 1u;
     }
     return writeRegister(68u, level, 1u);
@@ -222,8 +214,7 @@ uint8_t DynamixelLL::setID(uint8_t newID)
 {
     if (newID > 253u)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: invalid ID %u\n", newID);
+        LOG_WARN("DXL: invalid ID %u\n", newID);
         return 1u;
     }
     return writeRegister(7u, newID, 1u);
@@ -233,8 +224,7 @@ uint8_t DynamixelLL::setBaudRate(uint8_t baudRate)
 {
     if (baudRate > 7u)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: invalid baud %u\n", baudRate);
+        LOG_WARN("DXL: invalid baud %u\n", baudRate);
         return 1u;
     }
     return writeRegister(8u, baudRate, 1u);
@@ -362,20 +352,20 @@ uint16_t DynamixelLL::calculateCRC(const uint8_t* data, uint16_t length)
 
 bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
 {
-    if (_debug)
+#ifdef DEBUG
     {
         char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
         int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL TX(%u):", (unsigned)length);
         for (uint16_t i = 0; i < length && pos < (int)sizeof(hexBuf) - 4; ++i)
             pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", packet[i]);
-        debug.log(Level::LogDebug, "%s\n", hexBuf);
+        LOG_DEBUG("%s\n", hexBuf);
     }
+#endif
 
     // Verify USART is enabled
     if (!LL_USART_IsEnabled(_usart))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: USART not enabled!\n");
+        LOG_WARN("DXL: USART not enabled!\n");
         return false;
     }
 
@@ -386,7 +376,7 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     LL_USART_ClearFlag_FE(_usart);
 
     // STEP 1: Switch the SN74LVC1T45 to Transmit mode (A -> B)
-        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = HIGH (TX mode)
+    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = HIGH (TX mode)
 
     // Transmit all bytes (blocking)
     for (uint16_t i = 0; i < length; ++i)
@@ -396,8 +386,7 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         {
             if (--timeout == 0U)
             {
-                if (_debug)
-                    debug.log(Level::LogWarn, "DXL: TXE timeout at byte %u\n", i);
+                LOG_WARN("DXL: TXE timeout at byte %u\n", i);
                 return false;
             }
         }
@@ -410,14 +399,13 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     {
         if (--tcTimeout == 0U)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: TC timeout\n");
+            LOG_WARN("DXL: TC timeout\n");
             return false;
         }
     }
 
     // STEP 2: Switch the SN74LVC1T45 back to Receive mode (B -> A)
-        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
+    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
 
     if (activityCb)
         activityCb();
@@ -486,17 +474,15 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     if (!headerFound)
     {
-        if (_debug)
-        {
-            debug.log(Level::LogWarn, "DXL: header timeout\n");
-            // Debug: check if USART is still enabled and if any flags are set
-            debug.log(Level::LogDebug,
-                      "DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
-                      (unsigned long)_usart->ISR,
-                      (unsigned)LL_USART_IsEnabled(_usart),
-                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
-                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
-        }
+        LOG_WARN("DXL: header timeout\n");
+#ifdef DEBUG
+        // Debug: check if USART is still enabled and if any flags are set
+        LOG_DEBUG("DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
+                  (unsigned long)_usart->ISR,
+                  (unsigned)LL_USART_IsEnabled(_usart),
+                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
+                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
+#endif
         return result;
     }
 
@@ -506,8 +492,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
             buf[idx++] = LL_USART_ReceiveData8(_usart);
     if (idx < 7)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: header extension timeout\n");
+        LOG_WARN("DXL: header extension timeout\n");
         return result;
     }
 
@@ -517,8 +502,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     if (totalPacketLength > DXL_MAX_PACKET_SIZE)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: packet too large (%u)\n", totalPacketLength);
+        LOG_WARN("DXL: packet too large (%u)\n", totalPacketLength);
         return result;
     }
 
@@ -528,25 +512,24 @@ DxlStatusPacket DynamixelLL::receivePacket()
             buf[idx++] = LL_USART_ReceiveData8(_usart);
     if (idx < totalPacketLength)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
+        LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
         return result;
     }
 
-    if (_debug)
+#ifdef DEBUG
     {
         char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
         int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
         for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
             pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
-        debug.log(Level::LogDebug, "%s\n", hexBuf);
+        LOG_DEBUG("%s\n", hexBuf);
     }
+#endif
 
     // verify instruction byte (must be 0x55 for status packet)
     if (buf[7] != DXL_STATUS_INST)
     {
-        if (_debug)
-            debug.log(Level::LogDebug, "DXL: echo detected, retrying\n");
+        LOG_DEBUG("DXL: echo detected, retrying\n");
         return receivePacket(); // discard echo, try again
     }
 
@@ -562,8 +545,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     if (receivedCRC != computedCRC)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
+        LOG_WARN("DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
         return result;
     }
 
@@ -606,20 +588,18 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
 
     if (!sendPacket(packet, pktLen))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: write send failed\n");
+        LOG_WARN("DXL: write send failed\n");
         return 1u;
     }
 
     DxlStatusPacket rsp = receivePacket();
     if (!rsp.valid)
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: write invalid response\n");
+        LOG_WARN("DXL: write invalid response\n");
         return 1u; // Return error when no valid status packet received
     }
-    if (_debug && rsp.error)
-        debug.log(Level::LogWarn, "DXL: write error 0x%02X\n", rsp.error);
+    if (rsp.error)
+        LOG_WARN("DXL: write error 0x%02X\n", rsp.error);
     return rsp.error;
 }
 
@@ -724,8 +704,7 @@ DynamixelLL::bulkRead(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLeng
 {
     if (!sendBulkReadPacket(ids, addresses, dataLengths, count))
     {
-        if (_debug)
-            debug.log(Level::LogWarn, "DXL: error sending Bulk Read packet\n");
+        LOG_WARN("DXL: error sending Bulk Read packet\n");
         return 1;
     }
 
@@ -735,8 +714,7 @@ DynamixelLL::bulkRead(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLeng
         DxlStatusPacket response = receivePacket();
         if (!response.valid || response.error != 0)
         {
-            if (_debug)
-                debug.log(Level::LogWarn, "DXL: Bulk Read error from id %u: 0x%02X\n", ids[i], response.error);
+            LOG_WARN("DXL: Bulk Read error from id %u: 0x%02X\n", ids[i], response.error);
             retError = response.error;
         }
         values[i] = 0;

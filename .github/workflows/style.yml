@@ -43,7 +43,7 @@ jobs:
         run: |
           ARM_SYSROOT=$(arm-none-eabi-gcc -print-sysroot)
           find Core/Src Lib \( -name "*.cpp" \) \
-            | xargs clang-tidy-19 -p build/MK2_MOD1 --extra-arg="--sysroot=${ARM_SYSROOT}" \
+            | xargs clang-tidy-19 -p build/debug/MK2_MOD1 --extra-arg="--sysroot=${ARM_SYSROOT}" \
             2>&1 | tee /tmp/tidy_out.txt || true
           if grep -q "readability-identifier-naming" /tmp/tidy_out.txt; then
             echo "::error::Naming convention violations found"

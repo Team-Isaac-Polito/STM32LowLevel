@@ -344,8 +344,10 @@ extern "C" int main(void)
     }
 
     // Debug — must be first so all subsequent prints reach USB CDC
+#ifdef DEBUG
     debug.setLevel(Level::LogDebug);
-    debug.log(Level::LogInfo, "[main] Debug ready\n");
+    LOG_INFO("[main] Debug ready\n");
+#endif
 
     // LEDs — power-on indicator and DXL activity hook
     ledSet(Led::POWER, true);
@@ -355,30 +357,30 @@ extern "C" int main(void)
 
     // CAN — begin() releases STBY, so must come after MX_FDCAN2_Init()
     canW.begin();
-    debug.log(Level::LogInfo, "[main] CAN ready\n");
+    LOG_INFO("[main] CAN ready\n");
 
     // DXL bus init — DE pin direction and RX flush
     dxlBusInit(USART2);
-    debug.log(Level::LogInfo, "[main] DXL bus (USART2) ready\n");
+    LOG_INFO("[main] DXL bus (USART2) ready\n");
 
     // DXL traction — Dynamixel boot sequence
     dxlTractionInit();
-    debug.log(Level::LogInfo, "[main] Traction DXL ready\n");
+    LOG_INFO("[main] Traction DXL ready\n");
 
 #ifdef MODC_ARM
     dxlArmInit();
-    debug.log(Level::LogInfo, "[main] Arm DXL ready\n");
+    LOG_INFO("[main] Arm DXL ready\n");
 #endif
 
 #ifdef MODC_JOINT
     DXL_JOINT_INIT();
-    debug.log(Level::LogInfo, "[main] Joint DXL ready\n");
+    LOG_INFO("[main] Joint DXL ready\n");
 #endif
 
     // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
 #ifdef MODC_YAW
     encoderYaw.setZero();
-    debug.log(Level::LogInfo, "[main] Yaw encoder ready\n");
+    LOG_INFO("[main] Yaw encoder ready\n");
 #endif
 
     // 4b. I2C — IMU
@@ -386,7 +388,7 @@ extern "C" int main(void)
     imu.begin(IMU_ADDRESS);
     if (!imu.checkID())
     {
-        debug.log(Level::LogWarn, "[main] IMU not found at 0x%02X!\n", IMU_ADDRESS);
+        LOG_WARN("[main] IMU not found at 0x%02X!\n", IMU_ADDRESS);
     }
     else
     {
@@ -394,15 +396,14 @@ extern "C" int main(void)
         imu.enableAccel();
         imu.calibrateAccel();
         imu.calibrateGyro();
-        debug.log(Level::LogInfo, "[main] IMU ready\n");
+        LOG_INFO("[main] IMU ready\n");
     }
 #endif
 
     // 5. ADC — Battery (ADC1 LL)
     battery.begin();
-    debug.log(Level::LogInfo, "[main] Battery ready, %.2f V\n", battery.readVoltage());
-
-    debug.log(Level::LogInfo, "[main] Init complete, entering main loop\n");
+    LOG_INFO("[main] Battery ready, %.2f V\n", battery.readVoltage());
+    LOG_INFO("[main] Init complete, entering main loop\n");
 
     /* USER CODE END 2 */
 
@@ -417,14 +418,7 @@ extern "C" int main(void)
         {
             timeBat = now;
             if (!battery.charged())
-            {
-                float v = battery.readVoltage();
-                int vWhole = (int)v;
-                int vFrac = (int)((v - (float)vWhole) * 100.0f);
-                if (vFrac < 0)
-                    vFrac = -vFrac;
-                debug.log(Level::LogWarn, "[main] Low battery: %d.%02d V\n", vWhole, vFrac);
-            }
+                LOG_WARN("[main] Low battery: %.2f V\n", battery.readVoltage());
         }
 
         // Telemetry / feedback (25 Hz)
@@ -456,7 +450,7 @@ extern "C" int main(void)
             speedsDxl[0] = 0.0f;
             speedsDxl[1] = 0.0f;
             dxlTraction.setGoalVelocityRpm(speedsDxl);
-            debug.log(Level::LogWarn, "[main] CAN timeout, motors stopped\n");
+            LOG_WARN("[main] CAN timeout, motors stopped\n");
         }
 
 #ifdef MODC_ARM
@@ -542,11 +536,6 @@ static void dxlTractionInit(void)
 {
     static const uint8_t n = sizeof(tractionIds) / sizeof(tractionIds[0]);
 
-    // Enable DXL debug on all handles for visibility
-    dxlTraction.setDebug(true);
-    motLeft.setDebug(true);
-    motRight.setDebug(true);
-
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
     motRight.setTorqueEnable(false);
@@ -569,7 +558,7 @@ static void dxlTractionInit(void)
     // Enable torque
     motLeft.setTorqueEnable(true);
     motRight.setTorqueEnable(true);
-    debug.log(Level::LogInfo, "[DXL] Traction init: torque ON\n");
+    LOG_INFO("[DXL] Traction init: torque ON\n");
 }
 
 #ifdef MODC_ARM
@@ -584,7 +573,7 @@ static bool loadHomePositions(void)
 
     if (p[7] != HOME_FLASH_MAGIC)
     {
-        debug.log(Level::LogInfo, "[Flash] No saved home — using compiled defaults\n");
+        LOG_INFO("[Flash] No saved home — using compiled defaults\n");
         return false;
     }
 
@@ -596,7 +585,7 @@ static bool loadHomePositions(void)
     armPos0Mot5 = static_cast<int32_t>(p[5]);
     armPos0Mot6 = static_cast<int32_t>(p[6]);
 
-    debug.log(Level::LogInfo, "[Flash] Home positions loaded from Flash\n");
+    LOG_INFO("[Flash] Home positions loaded from Flash\n");
     return true;
 }
 
@@ -630,7 +619,7 @@ static bool saveHomePositions(void)
     if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK)
     {
         HAL_FLASH_Lock();
-        debug.log(Level::LogWarn, "[Flash] Erase failed (page error 0x%08lX)\n", pageError);
+        LOG_WARN("[Flash] Erase failed (page error 0x%08lX)\n", pageError);
         return false;
     }
 
@@ -644,13 +633,13 @@ static bool saveHomePositions(void)
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, addr, dword) != HAL_OK)
         {
             HAL_FLASH_Lock();
-            debug.log(Level::LogWarn, "[Flash] Write failed at offset %lu\n", i * 8U);
+            LOG_WARN("[Flash] Write failed at offset %lu\n", i * 8U);
             return false;
         }
     }
 
     HAL_FLASH_Lock();
-    debug.log(Level::LogInfo, "[Flash] Home positions saved to Flash\n");
+    LOG_INFO("[Flash] Home positions saved to Flash\n");
     return true;
 }
 
@@ -662,15 +651,6 @@ static bool saveHomePositions(void)
  */
 static void dxlArmInit(void)
 {
-    // Verbose DXL debug logging for prototype testing
-    armDxl.setDebug(true);
-    armMot1a.setDebug(true);
-    armMot1b.setDebug(true);
-    armMot2.setDebug(true);
-    armMot3.setDebug(true);
-    armMot4.setDebug(true);
-    armMot5.setDebug(true);
-    armMot6.setDebug(true);
 
     // Disable torque for safe reconfiguration
     armMot1a.setTorqueEnable(false);
@@ -739,7 +719,7 @@ static void dxlArmInit(void)
 
     if (!ok)
     {
-        debug.log(Level::LogWarn, "[ARM_INIT] Position read failed — torque not enabled\n");
+        LOG_WARN("[ARM_INIT] Position read failed — torque not enabled\n");
         return;
     }
 
@@ -779,7 +759,7 @@ static void dxlArmInit(void)
     armMot4.setGoalPositionEpcm(armPos0Mot4);
     armMot5.setGoalPositionEpcm(armPos0Mot5);
     armMot6.setGoalPositionEpcm(armPos0Mot6);
-    debug.log(Level::LogInfo, "[ARM_INIT] Arm DXL initialised — moving to home\n");
+    LOG_INFO("[ARM_INIT] Arm DXL initialised — moving to home\n");
 }
 
 /**
@@ -810,11 +790,10 @@ static void tickBeakStateMachine(uint32_t now)
             armMot6.setGoalPWM(BEAK_HOLD_PWM);
             beakState = BeakState::HOLDING;
             beakTempCheckMs = now;
-            debug.log(Level::LogInfo,
-                      "[beak] CLOSING\xe2\x86\x92HOLDING%s\n",
-                      timedOut     ? " (timeout)"
-                      : posReached ? " (pos)"
-                                   : " (load)");
+            LOG_INFO("[beak] CLOSING\xe2\x86\x92HOLDING%s\n",
+                     timedOut     ? " (timeout)"
+                     : posReached ? " (pos)"
+                                  : " (load)");
         }
     }
     else if (beakState == BeakState::OPENING)
@@ -830,7 +809,7 @@ static void tickBeakStateMachine(uint32_t now)
             armMot6.setGoalPositionEpcm(pos);
             armMot6.setGoalPWM(BEAK_FULL_PWM);
             beakState = BeakState::IDLE;
-            debug.log(Level::LogInfo, "[beak] OPENING\xe2\x86\x92IDLE%s\n", timedOut ? " (timeout)" : " (pos)");
+            LOG_INFO("[beak] OPENING\xe2\x86\x92IDLE%s\n", timedOut ? " (timeout)" : " (pos)");
         }
     }
     else if (beakState == BeakState::HOLDING)
@@ -846,17 +825,16 @@ static void tickBeakStateMachine(uint32_t now)
             if (temp >= BEAK_TEMP_LIMIT)
             {
                 armMot6.setGoalPWM(BEAK_HOLD_PWM / 2);
-                debug.log(Level::LogWarn,
-                          "[beak] Thermal: %u deg"
-                          "C >= %u deg"
-                          "C limit, PWM halved\n",
-                          temp,
-                          (uint8_t)BEAK_TEMP_LIMIT);
+                LOG_WARN("[beak] Thermal: %u deg"
+                         "C >= %u deg"
+                         "C limit, PWM halved\n",
+                         temp,
+                         (uint8_t)BEAK_TEMP_LIMIT);
             }
             if (hwErr != 0U)
             {
                 beakState = BeakState::IDLE;
-                debug.log(Level::LogWarn, "[beak] HW error 0x%02X in HOLDING \xe2\x86\x92 IDLE\n", hwErr);
+                LOG_WARN("[beak] HW error 0x%02X in HOLDING \xe2\x86\x92 IDLE\n", hwErr);
             }
         }
     }
@@ -880,11 +858,6 @@ static void DXL_JOINT_INIT(void)
     jointMot1R.setStatusReturnLevel(2U);
     jointMot2.setStatusReturnLevel(2U);
     HAL_Delay(10U);
-
-    jointDxl.setDebug(false);
-    jointMot1L.setDebug(false);
-    jointMot1R.setDebug(false);
-    jointMot2.setDebug(false);
 
     jointDxl.enableSync(jointIds, sizeof(jointIds));
 
@@ -911,7 +884,7 @@ static void DXL_JOINT_INIT(void)
 
     if (!ok)
     {
-        debug.log(Level::LogWarn, "[JOINT_INIT] Position read failed — torque not enabled\n");
+        LOG_WARN("[JOINT_INIT] Position read failed — torque not enabled\n");
         return;
     }
 
@@ -929,7 +902,7 @@ static void DXL_JOINT_INIT(void)
     jointPos0Mot1Lr[1] = 0;
     jointPos0Mot2 = 0;
 
-    debug.log(Level::LogInfo, "[JOINT_INIT] Joint DXL initialised\n");
+    LOG_INFO("[JOINT_INIT] Joint DXL initialised\n");
 }
 #endif // MODC_JOINT
 
@@ -954,6 +927,7 @@ static void sendFeedback(void)
 #ifdef MODC_YAW
     float yawAngle = encoderYaw.readAngle();
     canW.sendMessage(JOINT_YAW_FEEDBACK, &yawAngle, 4U);
+    LOG_DEBUG("[Yaw] Angle: %.2f deg\n", yawAngle);
 #endif
 
 #ifdef MODC_ARM
@@ -1037,6 +1011,7 @@ static void sendFeedback(void)
     float imuPitch = imu.getPitch();
     canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuRoll, 4U);
     canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuPitch, 4U);
+    LOG_DEBUG("[IMU] Roll: %.2f deg, Pitch: %.2f deg\n", imuRoll, imuPitch);
 #endif // MODC_IMU
 
 #ifdef MODC_JOINT
@@ -1082,7 +1057,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
             float goal[2] = {speedsDxl[0], speedsDxl[1]};
             dxlTraction.setGoalVelocityRpm(goal);
-            debug.log(Level::LogDebug, "[CAN] MOTOR_SETPOINT: L=%.1f R=%.1f RPM\n", speedsDxl[0], speedsDxl[1]);
+            LOG_DEBUG("[CAN] MOTOR_SETPOINT: L=%.1f R=%.1f RPM\n", speedsDxl[0], speedsDxl[1]);
             break;
         }
 
@@ -1197,7 +1172,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             armOldPosMot3 = armPos0Mot3;
             armOldPosMot4 = armPos0Mot4;
             armOldPosMot5 = armPos0Mot5;
-            debug.log(Level::LogInfo, "[CAN] RESET_ARM: moving to home\n");
+            LOG_INFO("[CAN] RESET_ARM: moving to home\n");
             break;
         }
 
@@ -1215,7 +1190,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             // DXL_ARM_INIT() restores the last Flash-persisted home (or compiled defaults).
             dxlArmInit();
             beakState = BeakState::IDLE;
-            debug.log(Level::LogInfo, "[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
+            LOG_INFO("[CAN] REBOOT_ARM: all arm motors rebooted and reinitialised\n");
             break;
         }
 
@@ -1239,7 +1214,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             if (msgData[0] == 1U)
                 (void)saveHomePositions();
             else
-                debug.log(Level::LogInfo, "[CAN] SET_HOME: session home updated\n");
+                LOG_INFO("[CAN] SET_HOME: session home updated\n");
             break;
         }
 #endif // MODC_ARM
@@ -1276,11 +1251,11 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             motRight.reboot();
             HAL_Delay(2000U); // Wait for motors to come back online (~1.5 s typical)
             dxlTractionInit();
-            debug.log(Level::LogInfo, "[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
+            LOG_INFO("[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
             break;
 
         default:
-            debug.log(Level::LogDebug, "[CAN] Unknown msg_id: 0x%02X\n", msgId);
+            LOG_DEBUG("[CAN] Unknown msg_id: 0x%02X\n", msgId);
             break;
     }
 }
