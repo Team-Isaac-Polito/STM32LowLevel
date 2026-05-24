@@ -14,7 +14,6 @@
 #define BATTERY_H
 
 #include <cstdint>
-#include <cstdbool>
 
 class Battery
 {

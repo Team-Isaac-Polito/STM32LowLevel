@@ -35,12 +35,14 @@ Refer to [docs/getting-started.md](./docs/getting-started.md) for detailed envir
 If you only want to compile the code without triggering the flashing tool:
 ```bash
 cd STM32LowLevel/STM32LowLevel
-cmake --preset MK2_MOD1 && cmake --build --preset MK2_MOD1
+cmake --preset MK2_MOD1 
+cmake --build --preset MK2_MOD1
 ```
 
 For release builds (optimized, debug logging stripped out):
 ```bash
-cmake --preset MK2_MOD1-release && cmake --build --preset MK2_MOD1-release
+cmake --preset MK2_MOD1-release 
+cmake --build --preset MK2_MOD1-release
 ```
 
 If you want to compile and flash your code directly to your target module using integrated CMake Workflows:

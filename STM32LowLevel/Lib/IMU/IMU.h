@@ -14,7 +14,6 @@
 #define IMU_H
 
 #include <cstdint>
-#include <cstdbool>
 
 static constexpr uint8_t LSM6DSL_ADDR = 0x6AU; //< Default 7-bit I2C address (SA0=GND)
 

@@ -37,23 +37,10 @@ if %ERRORLEVEL% EQU 0 (
 :: dfu-util not found — print install instructions
 echo [flash] dfu-util not found on this system.
 echo.
-echo [flash] Install it with one of the following:
+echo [flash] Install it from the official https://sourceforge.net/projects/dfu-util/ page.
 echo.
-where winget >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    echo     winget install --id=NicolasFr.dfu-util
-) else (
-    echo     winget install --id=NicolasFr.dfu-util   (install winget from the Microsoft Store first)
-)
-where choco >nul 2>nul
-if %ERRORLEVEL% EQU 0 (
-    echo     choco install dfu-util
-) else (
-    echo     choco install dfu-util                    (install Chocolatey from https://chocolatey.org/install)
-)
-echo.
-echo [flash] After installing, re-run:
-echo     cmake --workflow --preset MK2_MOD1-release-flash
+echo [flash] After installing, run the workflow again:
+echo     cmake --workflow --preset MK2_MOD1-flash
 echo.
 echo [flash] --- WSL fallback ---
 echo [flash] If you have dfu-util in WSL and the device attached via usbipd,
