@@ -27,9 +27,11 @@ static void i2cBusRecovery(void)
     for (int i = 0; i < 9; i++)
     {
         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_15);
-        for (volatile uint32_t d = 0; d < 1000; d++);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
         LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
-        for (volatile uint32_t d = 0; d < 1000; d++);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
 
         // Check if SDA (PB7) has been released
         if (LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_7))
@@ -38,9 +40,11 @@ static void i2cBusRecovery(void)
 
     // Generate a STOP condition: SCL high, then SDA high
     LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
-    for (volatile uint32_t d = 0; d < 1000; d++);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
     LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
-    for (volatile uint32_t d = 0; d < 1000; d++);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
 
     // Reconfigure PA15 back to I2C alternate function
     LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_15, LL_GPIO_MODE_ALTERNATE);
@@ -49,7 +53,8 @@ static void i2cBusRecovery(void)
     LL_GPIO_SetAFPin_0_7(GPIOA, LL_GPIO_PIN_15, LL_GPIO_AF_4);
 
     // Small delay for bus to settle
-    for (volatile uint32_t d = 0; d < 5000; d++);
+    for (volatile uint32_t d = 0; d < 5000; d++)
+        ;
 }
 
 static inline bool waitSet(volatile uint32_t* reg, uint32_t mask)
@@ -72,8 +77,7 @@ static inline bool waitClear(volatile uint32_t* reg, uint32_t mask)
 
 static inline void i2cClearErrors(void)
 {
-    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF |
-                I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_PECCF |
+    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_PECCF |
                 I2C_ICR_TIMOUTCF | I2C_ICR_ALERTCF;
 }
 

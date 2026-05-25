@@ -537,7 +537,8 @@ static void i2cBusScan(void)
     {
         LOG_INFO("[I2C] Bus busy, attempting recovery...\n");
         LL_I2C_GenerateStopCondition(I2C1);
-        for (volatile uint32_t i = 0; i < 5000; i++);
+        for (volatile uint32_t i = 0; i < 5000; i++)
+            ;
         if (I2C1->ISR & I2C_ISR_BUSY)
         {
             LOG_INFO("[I2C] Recovery failed, skipping scan\n");

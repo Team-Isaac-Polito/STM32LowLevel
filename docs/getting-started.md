@@ -359,7 +359,7 @@ sudo apt install -y clang-format-19
 
 #### Verify Style Checks
 
-To verify that all files pass the style checks:
+To verify that all files pass the style checks on Linux/WSL:
 
 ```bash
 # Test that all files pass clang-format checks (same as GitHub workflow)
@@ -369,9 +369,14 @@ find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xar
 # If output shows errors, files need formatting
 ```
 
+On Windows:
+```powershell
+Get-ChildItem -Path Core/Src, Lib, USB_Device -Include *.cpp, *.h, *.tpp -Recurse | ForEach-Object { clang-format --dry-run --Werror -style=file $_.FullName }
+```
+
 #### Quick Auto-Fix (Recommended)
 
-To automatically fix all style issues in the project according to the style workflow:
+To automatically fix all style issues in the project according to the style workflow, run the following command on Linux/WSL:
 
 ```bash
 # Navigate to STM32LowLevel directory
@@ -379,6 +384,11 @@ cd STM32LowLevel
 
 # Format ALL files that are checked by the style workflow
 find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format-19 -i -style=file
+```
+
+On Windows:
+```powershell
+Get-ChildItem -Path Core/Src, Lib, USB_Device -Include *.cpp, *.h, *.tpp -Recurse | ForEach-Object { clang-format -i -style=file $_.FullName }
 ```
 
 #### Manual Check for Specific Files

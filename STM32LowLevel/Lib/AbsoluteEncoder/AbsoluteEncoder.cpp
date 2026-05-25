@@ -21,24 +21,29 @@ static void i2cBusRecovery(void)
     for (int i = 0; i < 9; i++)
     {
         LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_15);
-        for (volatile uint32_t d = 0; d < 1000; d++);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
         LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
-        for (volatile uint32_t d = 0; d < 1000; d++);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
         if (LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_7))
             break;
     }
 
     LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
-    for (volatile uint32_t d = 0; d < 1000; d++);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
     LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
-    for (volatile uint32_t d = 0; d < 1000; d++);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
 
     LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_15, LL_GPIO_MODE_ALTERNATE);
     LL_GPIO_SetPinOutputType(GPIOA, LL_GPIO_PIN_15, LL_GPIO_OUTPUT_OPENDRAIN);
     LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_15, LL_GPIO_SPEED_FREQ_HIGH);
     LL_GPIO_SetAFPin_0_7(GPIOA, LL_GPIO_PIN_15, LL_GPIO_AF_4);
 
-    for (volatile uint32_t d = 0; d < 5000; d++);
+    for (volatile uint32_t d = 0; d < 5000; d++)
+        ;
 }
 
 static inline bool waitSet(volatile uint32_t* reg, uint32_t mask)
@@ -61,8 +66,7 @@ static inline bool waitClear(volatile uint32_t* reg, uint32_t mask)
 
 static inline void i2cClearErrors(void)
 {
-    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF |
-                I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_PECCF |
+    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_PECCF |
                 I2C_ICR_TIMOUTCF | I2C_ICR_ALERTCF;
 }
 
