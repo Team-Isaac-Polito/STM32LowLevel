@@ -4,10 +4,58 @@
 #include <cstring>
 
 #include "stm32g4xx_ll_i2c.h"
+#include "stm32g4xx_ll_gpio.h"
 #include "stm32g4xx_hal.h"
 
-// Timeout in busy-wait loops (~10 ms at 170 MHz, 34000 loops/ms)
-static constexpr uint32_t I2C_TIMEOUT_LOOPS = 34000U * 10U;
+// Timeout in busy-wait loops (~10 ms at 170 MHz)
+static constexpr uint32_t I2C_TIMEOUT_LOOPS = 340000U;
+
+/**
+ * @brief Recover a stuck I2C bus by toggling SCL clock line.
+ *
+ * If SDA is held low by a device, we clock SCL to let the device
+ * finish its transfer. This is the standard I2C bus recovery procedure.
+ */
+static void i2cBusRecovery(void)
+{
+    // Configure PA15 (SCL) as GPIO output open-drain
+    LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_15, LL_GPIO_MODE_OUTPUT);
+    LL_GPIO_SetPinOutputType(GPIOA, LL_GPIO_PIN_15, LL_GPIO_OUTPUT_OPENDRAIN);
+    LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_15, LL_GPIO_SPEED_FREQ_HIGH);
+
+    // Toggle SCL up to 9 times to clock out any stuck device
+    for (int i = 0; i < 9; i++)
+    {
+        LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_15);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
+        LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
+        for (volatile uint32_t d = 0; d < 1000; d++)
+            ;
+
+        // Check if SDA (PB7) has been released
+        if (LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_7))
+            break;
+    }
+
+    // Generate a STOP condition: SCL high, then SDA high
+    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
+    LL_GPIO_SetOutputPin(GPIOB, LL_GPIO_PIN_7);
+    for (volatile uint32_t d = 0; d < 1000; d++)
+        ;
+
+    // Reconfigure PA15 back to I2C alternate function
+    LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_15, LL_GPIO_MODE_ALTERNATE);
+    LL_GPIO_SetPinOutputType(GPIOA, LL_GPIO_PIN_15, LL_GPIO_OUTPUT_OPENDRAIN);
+    LL_GPIO_SetPinSpeed(GPIOA, LL_GPIO_PIN_15, LL_GPIO_SPEED_FREQ_HIGH);
+    LL_GPIO_SetAFPin_0_7(GPIOA, LL_GPIO_PIN_15, LL_GPIO_AF_4);
+
+    // Small delay for bus to settle
+    for (volatile uint32_t d = 0; d < 5000; d++)
+        ;
+}
 
 static inline bool waitSet(volatile uint32_t* reg, uint32_t mask)
 {
@@ -27,103 +75,158 @@ static inline bool waitClear(volatile uint32_t* reg, uint32_t mask)
     return true;
 }
 
-bool IMU::i2cWriteByte(uint8_t reg)
+static inline void i2cClearErrors(void)
+{
+    I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF | I2C_ICR_BERRCF | I2C_ICR_ARLOCF | I2C_ICR_OVRCF | I2C_ICR_PECCF |
+                I2C_ICR_TIMOUTCF | I2C_ICR_ALERTCF;
+}
+
+/**
+ * @brief Robust I2C write-then-read (repeated start).
+ * Mimics Arduino Wire: beginTransmission(addr); write(reg); endTransmission(false); requestFrom(addr, len);
+ * On any error, performs bus recovery.
+ */
+static bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* buf, uint8_t len)
 {
     if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
-        return false;
+    {
+        i2cBusRecovery();
+        if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+            return false;
+    }
+
+    i2cClearErrors();
+
+    // Phase 1: Write register address (SOFTEND = no STOP, repeated start follows)
     LL_I2C_HandleTransfer(I2C1,
-                          static_cast<uint32_t>(_addr) << 1U,
+                          static_cast<uint32_t>(addr) << 1U,
                           LL_I2C_ADDRSLAVE_7BIT,
                           1U,
                           LL_I2C_MODE_SOFTEND,
                           LL_I2C_GENERATE_START_WRITE);
+
     if (!waitSet(&I2C1->ISR, I2C_ISR_TXIS))
+    {
+        i2cBusRecovery();
         return false;
+    }
+
     if (I2C1->ISR & I2C_ISR_NACKF)
     {
         I2C1->ICR = I2C_ICR_NACKCF;
+        LL_I2C_GenerateStopCondition(I2C1);
+        waitSet(&I2C1->ISR, I2C_ISR_STOPF);
+        I2C1->ICR = I2C_ICR_STOPCF;
         return false;
     }
-    I2C1->TXDR = reg;
-    if (!waitSet(&I2C1->ISR, I2C_ISR_TC))
-        return false;
-    return true;
-}
 
-bool IMU::i2cReadBytes(uint8_t* buf, uint8_t len)
-{
+    I2C1->TXDR = reg;
+
+    if (!waitSet(&I2C1->ISR, I2C_ISR_TC))
+    {
+        i2cBusRecovery();
+        return false;
+    }
+
+    // Phase 2: Read data (AUTOEND = generates STOP after last byte)
     LL_I2C_HandleTransfer(I2C1,
-                          static_cast<uint32_t>(_addr) << 1U,
+                          static_cast<uint32_t>(addr) << 1U,
                           LL_I2C_ADDRSLAVE_7BIT,
                           len,
                           LL_I2C_MODE_AUTOEND,
                           LL_I2C_GENERATE_START_READ);
+
     for (uint8_t i = 0U; i < len; i++)
     {
         if (!waitSet(&I2C1->ISR, I2C_ISR_RXNE))
-            return false;
-        if (I2C1->ISR & I2C_ISR_NACKF)
         {
-            I2C1->ICR = I2C_ICR_NACKCF;
+            i2cBusRecovery();
             return false;
         }
         buf[i] = static_cast<uint8_t>(I2C1->RXDR);
     }
+
     if (!waitSet(&I2C1->ISR, I2C_ISR_STOPF))
+    {
+        i2cBusRecovery();
         return false;
+    }
+
     I2C1->ICR = I2C_ICR_STOPCF;
     return true;
 }
 
-bool IMU::i2cWriteRegByte(uint8_t reg, uint8_t val)
+/**
+ * @brief Robust I2C write register + value.
+ */
+static bool i2cWriteReg(uint8_t addr, uint8_t reg, uint8_t val)
 {
     if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
-        return false;
+    {
+        i2cBusRecovery();
+        if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+            return false;
+    }
+
+    i2cClearErrors();
+
     LL_I2C_HandleTransfer(I2C1,
-                          static_cast<uint32_t>(_addr) << 1U,
+                          static_cast<uint32_t>(addr) << 1U,
                           LL_I2C_ADDRSLAVE_7BIT,
                           2U,
                           LL_I2C_MODE_AUTOEND,
                           LL_I2C_GENERATE_START_WRITE);
+
     if (!waitSet(&I2C1->ISR, I2C_ISR_TXIS))
+    {
+        i2cBusRecovery();
         return false;
+    }
+
     if (I2C1->ISR & I2C_ISR_NACKF)
     {
         I2C1->ICR = I2C_ICR_NACKCF;
+        LL_I2C_GenerateStopCondition(I2C1);
+        waitSet(&I2C1->ISR, I2C_ISR_STOPF);
+        I2C1->ICR = I2C_ICR_STOPCF;
         return false;
     }
+
     I2C1->TXDR = reg;
+
     if (!waitSet(&I2C1->ISR, I2C_ISR_TXIS))
-        return false;
-    if (I2C1->ISR & I2C_ISR_NACKF)
     {
-        I2C1->ICR = I2C_ICR_NACKCF;
+        i2cBusRecovery();
         return false;
     }
+
     I2C1->TXDR = val;
+
     if (!waitSet(&I2C1->ISR, I2C_ISR_STOPF))
+    {
+        i2cBusRecovery();
         return false;
+    }
+
     I2C1->ICR = I2C_ICR_STOPCF;
     return true;
 }
 
+// ======================== Public Methods ========================
+
 bool IMU::writeRegister(uint8_t reg, uint8_t value)
 {
-    return i2cWriteRegByte(reg, value);
+    return i2cWriteReg(_addr, reg, value);
 }
 
 bool IMU::readRegister(uint8_t reg, uint8_t& out)
 {
-    if (!i2cWriteByte(reg))
-        return false;
-    return i2cReadBytes(&out, 1U);
+    return i2cReadReg(_addr, reg, &out, 1U);
 }
 
 bool IMU::readRegisters(uint8_t reg, uint8_t* buffer, uint8_t length)
 {
-    if (!i2cWriteByte(reg))
-        return false;
-    return i2cReadBytes(buffer, length);
+    return i2cReadReg(_addr, reg, buffer, length);
 }
 
 void IMU::begin(uint8_t addr)
@@ -137,7 +240,7 @@ bool IMU::checkID()
     uint8_t id = 0;
     if (!readRegister(LSM6DSL_WHO_AM_I, id))
         return false;
-    return (id == 0x6AU);
+    return (id == _addr);
 }
 
 void IMU::enableAccel()
