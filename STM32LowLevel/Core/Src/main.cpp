@@ -1092,10 +1092,25 @@ static void sendFeedback(void)
 
 #ifdef MODC_IMU
     imu.update();
+// MK2_MOD3 has IMU rotated 90 deg, so roll/pitch are swapped and negative
+#if MODULE_DEFINE == MK2_MOD3
+    float imuRoll = -imu.getRoll();
+    float imuPitch = -imu.getPitch();
+    canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuPitch, 4U);
+    canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuRoll, 4U);
+// MK2_MOD1 has IMU flipped 180 deg, so pitch is negative
+#elif MODULE_DEFINE == MK2_MOD1
+    float imuRoll = imu.getRoll();
+    float imuPitch = -imu.getPitch();
+    canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuRoll, 4U);
+    canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuPitch, 4U);
+// MK2_MOD2 has IMU in standard orientation, so direct mapping
+#elif MODULE_DEFINE == MK2_MOD2
     float imuRoll = imu.getRoll();
     float imuPitch = imu.getPitch();
     canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuRoll, 4U);
     canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuPitch, 4U);
+#endif
     LOG_DEBUG("[IMU] Roll: %.2f deg, Pitch: %.2f deg\n", imuRoll, imuPitch);
 #endif // MODC_IMU
 
