@@ -22,14 +22,20 @@ import threading
 import time
 from queue import Queue, Empty, Full
 
-from flask import Flask, Response, request, jsonify, render_template_string
+from flask import Flask, Response, request, jsonify, render_template_string, make_response
 
 import can
 
-from .protocol import ModuleAddress, MsgType, decode_can_id, MSG_NAMES
-from .codec import decode_payload, format_decoded
-from .sender import CanSender
-from .monitor import CanMonitor, NAMED_FILTERS
+try:
+    from .protocol import ModuleAddress, MsgType, encode_can_id, decode_can_id, MSG_NAMES
+    from .codec import encode_payload, decode_payload, format_decoded
+    from .sender import CanSender
+    from .monitor import CanMonitor, NAMED_FILTERS
+except ImportError:
+    from protocol import ModuleAddress, MsgType, encode_can_id, decode_can_id, MSG_NAMES
+    from codec import encode_payload, decode_payload, format_decoded
+    from sender import CanSender
+    from monitor import CanMonitor, NAMED_FILTERS
 
 app = Flask(__name__)
 
@@ -39,6 +45,17 @@ sender: CanSender = None  # type: ignore
 monitor: CanMonitor = None  # type: ignore
 event_queues: list[Queue] = []
 event_queues_lock = threading.Lock()
+
+# Track last received message for status endpoint
+_last_recv_msg = None
+_last_recv_lock = threading.Lock()
+
+# Message buffer for polling endpoint
+_msg_buffer = []
+_msg_buffer_lock = threading.Lock()
+_msg_id_counter = 0
+
+
 
 # Accumulated positions for relative mode (per-command)
 _positions: dict[str, list[float]] = {}
@@ -106,6 +123,7 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
       <button data-filter="traction">Traction</button>
       <button data-filter="joint">Joint</button>
       <button data-filter="imu">IMU</button>
+      <button data-filter="battery">Battery</button>
       <button data-filter="feedback">Feedback</button>
       <button id="pauseBtn" onclick="togglePause()" style="margin-left:12px">⏸ Pause</button>
     </div>
@@ -139,8 +157,23 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
             <input id="val2" type="number" step="1" value="0" style="width:140px">
           </div>
         </div>
-        <button onclick="sendCmd()">Send</button>
+        <button onclick="sendCommand()">Send</button>
         <button class="danger" onclick="stopAll()">STOP ALL</button>
+      </div>
+      <div id="torqueDropdowns" style="display:none;margin-top:8px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <label style="font-size:0.75rem;color:var(--green)">Motor</label>
+            <select id="torqueMotor" style="width:200px"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <label style="font-size:0.75rem;color:var(--green)">State</label>
+            <select id="torqueState" style="width:160px">
+              <option value="1">ON (enable torque)</option>
+              <option value="0">OFF (disable torque)</option>
+            </select>
+          </div>
+        </div>
       </div>
       <div id="cmdOptions" style="margin-top:8px;display:none">
         <label style="font-size:0.8rem;color:var(--green);cursor:pointer">
@@ -168,9 +201,6 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
         </div>
       </div>
       <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px">
-        <label style="font-size:0.8rem;color:var(--blue);cursor:pointer" onclick="document.getElementById('seqPanel').style.display=document.getElementById('seqPanel').style.display==='none'?'':'none'">
-          Sequence Builder <span style="font-size:0.7rem">(click to expand)</span>
-        </label>
         <div id="seqPanel" style="display:none;margin-top:8px">
           <p style="font-size:0.75rem;color:#888;margin-bottom:6px">Build a sequence of commands with different parameters. Click "Add Current" to add the current command/params to the sequence.</p>
           <div style="display:flex;gap:4px;margin-bottom:8px">
@@ -238,6 +268,7 @@ const CMDS_ARM = [
     { val: 'set_home', label: 'Set Home — Save current position as home' },
   ]},
   { group: 'System', items: [
+    { val: 'torque', label: 'Torque Enable/Disable — Per-motor torque control (bitfield)' },
     { val: 'reboot_traction', label: 'Reboot Traction — Restart DC motors' },
     { val: 'stop_all', label: 'Emergency Stop — Zero all motors' },
   ]},
@@ -252,6 +283,7 @@ const CMDS_JOINT = [
     { val: 'joint_roll', label: 'Joint Roll — Axial rotation' },
   ]},
   { group: 'System', items: [
+    { val: 'torque', label: 'Torque Enable/Disable — Per-motor torque control (bitfield)' },
     { val: 'reboot_traction', label: 'Reboot Traction — Restart DC motors' },
     { val: 'stop_all', label: 'Emergency Stop — Zero all motors' },
   ]},
@@ -278,11 +310,37 @@ const CMD_INFO = {
   set_home:   { desc: 'Set current arm position as new home. Check "Permanent" to persist across power cycles.', lbl1: '', lbl2: '', inputs: 0, step: 1, hasOptions: true },
   reboot_traction: { desc: 'Reboot traction DC motors. Sends a reboot command to the traction controller.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   stop_all:   { desc: 'Emergency stop — sends zero speed to all traction motors on all modules.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  torque:     { desc: 'Enable or disable torque for a single motor.',
+                 lbl1: 'Motor', lbl2: 'State', inputs: 'torque', step: 1 },
   joint_1a1b: { desc: 'Set inter-module joint differential pitch/yaw. Theta controls yaw, phi controls pitch. Range: approx -1.57 to 1.57 rad.',
                  lbl1: 'Theta / Yaw (rad)', lbl2: 'Phi / Pitch (rad)', inputs: 2, step: 0.05 },
   joint_roll: { desc: 'Set inter-module joint axial roll. Range: approx -3.14 to 3.14 rad.',
                  lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
 };
+
+// Motor options for torque command — per module type
+// Each entry: { bit: <bit number>, name: <human readable> }
+const TORQUE_MOTORS_ARM = [
+  { bit: 0, name: 'Right Traction' },
+  { bit: 1, name: 'Left Traction' },
+  { bit: 2, name: 'Arm J1a (Shoulder Pitch)' },
+  { bit: 3, name: 'Arm J1b (Shoulder Yaw)' },
+  { bit: 4, name: 'Arm J2 (Elbow Pitch)' },
+  { bit: 5, name: 'Arm J3 (Forearm Roll)' },
+  { bit: 6, name: 'Arm J4 (Wrist Pitch)' },
+  { bit: 7, name: 'Arm J5 (Wrist Roll)' },
+];
+const TORQUE_MOTORS_JOINT = [
+  { bit: 0, name: 'Right Traction' },
+  { bit: 1, name: 'Left Traction' },
+  { bit: 2, name: 'Joint J1-Left (Pitch)' },
+  { bit: 3, name: 'Joint J1-Right (Yaw)' },
+  { bit: 4, name: 'Joint J2 (Roll)' },
+];
+const TORQUE_STATES = [
+  { val: 1, label: 'ON (enable torque)' },
+  { val: 0, label: 'OFF (disable torque)' },
+];
 
 // Build command dropdown based on selected module
 function rebuildCommandDropdown() {
@@ -305,9 +363,13 @@ function rebuildCommandDropdown() {
   // Try to preserve previous selection
   if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
   updateForm();
+  rebuildTorqueMotors();
 }
 
-document.getElementById('targetModule').addEventListener('change', rebuildCommandDropdown);
+document.getElementById('targetModule').addEventListener('change', function() {
+  rebuildCommandDropdown();
+  rebuildTorqueMotors();
+});
 
 function updateForm() {
   const cmd = document.getElementById('cmdType').value;
@@ -320,18 +382,31 @@ function updateForm() {
   const v1 = document.getElementById('val1');
   const v2 = document.getElementById('val2');
   const group = document.getElementById('inputGroup');
-  l1.textContent = info.lbl1;
-  l2.textContent = info.lbl2;
-  v1.step = info.step || 1;
-  v2.step = info.step || 1;
-  f1.style.display = info.inputs >= 1 ? '' : 'none';
-  f2.style.display = info.inputs >= 2 ? '' : 'none';
-  group.style.display = info.inputs > 0 ? '' : 'none';
+  const torqueDropdowns = document.getElementById('torqueDropdowns');
+
+  if (info.inputs === 'torque') {
+    // Show torque dropdowns, hide normal inputs
+    group.style.display = 'none';
+    if (torqueDropdowns) torqueDropdowns.style.display = '';
+  } else {
+    // Show normal inputs, hide torque dropdowns
+    l1.textContent = info.lbl1;
+    l2.textContent = info.lbl2;
+    v1.step = info.step || 1;
+    v2.step = info.step || 1;
+    f1.style.display = info.inputs >= 1 ? '' : 'none';
+    f2.style.display = info.inputs >= 2 ? '' : 'none';
+    group.style.display = info.inputs > 0 ? '' : 'none';
+    if (torqueDropdowns) torqueDropdowns.style.display = 'none';
+  }
   // Show permanent checkbox for set_home
   document.getElementById('cmdOptions').style.display = info.hasOptions ? '' : 'none';
   // Show relative mode for arm/joint angle commands
   const isAngle = cmd.startsWith('arm_') || cmd.startsWith('joint_');
   document.getElementById('relativeMode').style.display = (isAngle && info.inputs > 0) ? '' : 'none';
+  // Show torque quick-preset buttons
+  const torquePresets = document.getElementById('torquePresets');
+  if (torquePresets) torquePresets.style.display = (cmd === 'torque') ? '' : 'none';
 }
 rebuildCommandDropdown();  // set initial state
 
@@ -365,30 +440,45 @@ function markConnected() {
   }, 5000);
 }
 
-// SSE
-function connect() {
-  const es = new EventSource('/stream');
-  es.onopen = () => {
-    // SSE channel open — but don't show "connected" until we get CAN data
-  };
-  es.onmessage = e => {
-    const d = JSON.parse(e.data);
-    markConnected();
-    const typeHex = '0x' + d.msg_type.toString(16).toUpperCase().padStart(2, '0');
-    const key = d.msg_name + ' [' + typeHex + ']';
-    stats[key] = (stats[key] || 0) + 1;
-    latestValues[d.msg_name] = d.payload_str;
-    msgBuffer.push({...d, typeHex});
-    dirty = true;
-  };
-  es.onerror = () => {
-    document.getElementById('connDot').className = 'status-dot off';
-    document.getElementById('connText').textContent = 'SSE disconnected — reconnecting...';
-    es.close();
-    setTimeout(connect, 2000);
-  };
+// Poll for new CAN messages
+let lastMsgId = 0;
+let pollInterval = null;
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(fetchMessages, 200);
 }
-connect();
+
+function stopPolling() {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+async function fetchMessages() {
+  try {
+    const r = await fetch('/messages?since=' + lastMsgId);
+    if (!r.ok) return;
+    const data = await r.json();
+    if (!data.messages || data.messages.length === 0) return;
+    for (const d of data.messages) {
+      lastMsgId = Math.max(lastMsgId, d._id || 0);
+      markConnected();
+      const typeHex = '0x' + d.msg_type.toString(16).toUpperCase().padStart(2, '0');
+      const key = d.msg_name + ' [' + typeHex + ']';
+      stats[key] = (stats[key] || 0) + 1;
+      latestValues[d.msg_name] = d.payload_str;
+      msgBuffer.push({...d, typeHex});
+      dirty = true;
+    }
+  } catch(e) {
+    // ignore network errors
+  }
+}
+
+// Start polling when page loads
+window.addEventListener('load', startPolling);
 
 function updateStats() {
   const body = document.getElementById('statsBody');
@@ -440,16 +530,54 @@ function sendOne(cmd, target, v1, v2, opts) {
   }).then(r => r.json()).then(d => { if(d.error) alert(d.error); });
 }
 
-function sendCmd() {
+// ── Torque bitfield state tracking ──
+// Tracks the current bitfield per module so we can toggle individual motors
+const torqueState = { '0x21': 0xFF, '0x22': 0xFF, '0x23': 0xFF }; // Start all enabled
+
+// Populate torque motor dropdown based on selected module
+function rebuildTorqueMotors() {
+  const mod = document.getElementById('targetModule').value;
+  const isArm = mod === '0x21';
+  const motors = isArm ? TORQUE_MOTORS_ARM : TORQUE_MOTORS_JOINT;
+  const sel = document.getElementById('torqueMotor');
+  if (!sel) return;
+  sel.innerHTML = '';
+  motors.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m.bit; o.textContent = m.name;
+    sel.appendChild(o);
+  });
+}
+
+function sendCommand() {
   const cmd = document.getElementById('cmdType').value;
   const target = parseInt(document.getElementById('targetModule').value);
-  const v1 = parseFloat(document.getElementById('val1').value) || 0;
-  const v2 = parseFloat(document.getElementById('val2').value) || 0;
   const count = parseInt(document.getElementById('burstCount').value) || 1;
   const interval = parseInt(document.getElementById('burstInterval').value) || 100;
   const opts = {};
-  if (document.getElementById('optPermanent').checked) opts.permanent = true;
-  if (document.getElementById('optRelative').checked) opts.relative = true;
+  if (document.getElementById('optPermanent')) {
+    if (document.getElementById('optPermanent').checked) opts.permanent = true;
+  }
+  if (document.getElementById('optRelative')) {
+    if (document.getElementById('optRelative').checked) opts.relative = true;
+  }
+
+  let v1, v2;
+  if (cmd === 'torque') {
+    const motorBit = parseInt(document.getElementById('torqueMotor').value) || 0;
+    const state = parseInt(document.getElementById('torqueState').value) || 0;
+    const targetHex = '0x' + target.toString(16);
+    if (state) {
+      torqueState[targetHex] |= (1 << motorBit);
+    } else {
+      torqueState[targetHex] &= ~(1 << motorBit);
+    }
+    v1 = torqueState[targetHex];
+    v2 = 0;
+  } else {
+    v1 = parseFloat(document.getElementById('val1').value) || 0;
+    v2 = parseFloat(document.getElementById('val2').value) || 0;
+  }
 
   if (count <= 1) { sendOne(cmd, target, v1, v2, opts); return; }
 
@@ -568,8 +696,31 @@ def get_filter_tags(msg_type: int) -> list[str]:
 
 @app.route("/")
 def index():
-    return render_template_string(DASHBOARD_HTML)
+    response = make_response(render_template_string(DASHBOARD_HTML))
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["X-Version"] = str(time.time())
+    return response
 
+
+@app.route("/status")
+def status():
+    """Return the last received CAN message for debugging."""
+    global _last_recv_msg
+    with _last_recv_lock:
+        if _last_recv_msg is None:
+            return jsonify({"status": "no_messages", "message": "No CAN messages received yet"})
+        return jsonify({"status": "ok", "last_msg": _last_recv_msg})
+
+@app.route("/messages")
+def messages():
+    """Polling endpoint: return messages since given ID."""
+    since_id = request.args.get('since', 0, type=int)
+    with _msg_buffer_lock:
+        # Return messages with _id > since_id
+        new_msgs = [m for m in _msg_buffer if m.get('_id', 0) > since_id]
+    return jsonify({"messages": new_msgs})
 
 @app.route("/stream")
 def stream():
@@ -593,7 +744,11 @@ def stream():
                 if q in event_queues:
                     event_queues.remove(q)
 
-    return Response(generate(), mimetype="text/event-stream")
+    response = Response(generate(), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache"
+    response.headers["X-Accel-Buffering"] = "no"
+    response.headers["Connection"] = "keep-alive"
+    return response
 
 
 @app.route("/send", methods=["POST"])
@@ -648,6 +803,10 @@ def send_command():
             sender.joint_pitch_1a1b(v1, v2, destination=dest)
         elif cmd == "joint_roll":
             sender.joint_roll(v1, destination=dest)
+        elif cmd == "torque":
+            # Accept hex (0x...) or decimal bitfield
+            bitfield = int(data.get("val1", 0))
+            sender.torque_enable(bitfield, destination=dest)
         elif cmd == "stop_all":
             sender.stop_all()
         else:
@@ -699,6 +858,22 @@ def can_to_sse_callback(decoded_id, payload, raw_msg):
                 q.put_nowait(event)
             except Full:
                 pass  # Drop if client is slow
+    
+    # Track last received message
+    global _last_recv_msg
+    with _last_recv_lock:
+        _last_recv_msg = event
+    
+    # Store in polling buffer
+    global _msg_id_counter
+    with _msg_buffer_lock:
+        _msg_id_counter += 1
+        event_with_id = dict(event)
+        event_with_id['_id'] = _msg_id_counter
+        _msg_buffer.append(event_with_id)
+        # Keep only last 500 messages
+        if len(_msg_buffer) > 500:
+            _msg_buffer.pop(0)
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────
@@ -718,6 +893,10 @@ def main():
     parser.add_argument(
         "--demo", action="store_true",
         help="Use virtual CAN bus for GUI preview (no hardware needed)",
+    )
+    parser.add_argument(
+        "--debug", action="store_true",
+        help="Enable debug output: print received CAN messages to terminal",
     )
     args = parser.parse_args()
 
@@ -746,14 +925,90 @@ def main():
     monitor.add_callback(can_to_sse_callback)
 
     # Start CAN monitor in background thread
+    # quiet=True suppresses terminal output (use --debug to enable)
     monitor_thread = threading.Thread(
         target=monitor.run,
-        kwargs={"quiet": True},
+        kwargs={"quiet": not args.debug},
         daemon=True,
     )
     monitor_thread.start()
 
+    # Start demo message generator if in demo mode
+    if args.demo:
+        def demo_generator():
+            import random
+            import time
+            
+            print("  Demo mode: Generating test messages...")
+            time.sleep(1)  # Wait for monitor to start
+            while True:
+                try:
+                    # Generate random messages for each module
+                    for module_addr in [ModuleAddress.MK2_MOD1, ModuleAddress.MK2_MOD2, ModuleAddress.MK2_MOD3]:
+                        # Motor feedback (two floats: right_rpm, left_rpm)
+                        can_id = encode_can_id(
+                            module_addr, ModuleAddress.CENTRAL,
+                            MsgType.MOTOR_FEEDBACK
+                        )
+                        data = encode_payload(MsgType.MOTOR_FEEDBACK, right_rpm=random.uniform(-100, 100), left_rpm=random.uniform(-100, 100))
+                        
+                        decoded_id = decode_can_id(can_id)
+                        payload = decode_payload(MsgType.MOTOR_FEEDBACK, data)
+                        raw_msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=True)
+                        can_to_sse_callback(decoded_id, payload, raw_msg)
+                        
+                        if args.debug:
+                            print(f"  Demo: {decoded_id.msg_name} from {decoded_id.source_name}")
+                        
+                        time.sleep(0.2)
+                        
+                        # Joint yaw feedback (one float)
+                        can_id = encode_can_id(
+                            module_addr, ModuleAddress.CENTRAL,
+                            MsgType.JOINT_YAW_FEEDBACK
+                        )
+                        data = encode_payload(MsgType.JOINT_YAW_FEEDBACK, angle=random.uniform(-180, 180))
+                        
+                        decoded_id = decode_can_id(can_id)
+                        payload = decode_payload(MsgType.JOINT_YAW_FEEDBACK, data)
+                        raw_msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=True)
+                        can_to_sse_callback(decoded_id, payload, raw_msg)
+                        
+                        if args.debug:
+                            print(f"  Demo: {decoded_id.msg_name} from {decoded_id.source_name}")
+                        
+                        time.sleep(0.2)
+                        
+                        # Battery voltage
+                        can_id = encode_can_id(
+                            module_addr, ModuleAddress.CENTRAL,
+                            MsgType.BATTERY_VOLTAGE
+                        )
+                        data = encode_payload(MsgType.BATTERY_VOLTAGE, voltage=random.uniform(22.0, 29.0))
+                        
+                        decoded_id = decode_can_id(can_id)
+                        payload = decode_payload(MsgType.BATTERY_VOLTAGE, data)
+                        raw_msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=True)
+                        can_to_sse_callback(decoded_id, payload, raw_msg)
+                        
+                        if args.debug:
+                            print(f"  Demo: {decoded_id.msg_name} from {decoded_id.source_name}")
+                        
+                        time.sleep(0.2)
+                    
+                    time.sleep(0.5)  # Pause between cycles
+                except Exception as e:
+                    print(f"  Demo generator error: {e}")
+                    time.sleep(1)
+        
+        demo_thread = threading.Thread(target=demo_generator, daemon=True)
+        demo_thread.start()
+
     print(f"Dashboard: http://localhost:{args.port}")
+    if args.debug:
+        print("  Debug mode: CAN messages will be printed to terminal")
+    if args.demo:
+        print("  Demo mode: Generating test messages...")
     print("Press Ctrl+C to stop.\n")
 
     try:

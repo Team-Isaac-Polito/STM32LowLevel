@@ -10,8 +10,12 @@ import can
 import time
 from typing import Optional
 
-from .protocol import MsgType, ModuleAddress, encode_can_id
-from .codec import encode_payload
+try:
+    from .protocol import MsgType, ModuleAddress, encode_can_id
+    from .codec import encode_payload
+except ImportError:
+    from protocol import MsgType, ModuleAddress, encode_can_id
+    from codec import encode_payload
 
 
 class CanSender:
@@ -144,3 +148,27 @@ class CanSender:
         """Emergency stop: zero all motor speeds."""
         for dest in [ModuleAddress.MK2_MOD1, ModuleAddress.MK2_MOD2, ModuleAddress.MK2_MOD3]:
             self.traction(0.0, 0.0, dest)
+
+    def torque_enable(
+        self,
+        torque_bitfield: int,
+        destination: int = ModuleAddress.MK2_MOD1,
+    ) -> None:
+        """Enable/disable torque for individual motors via bitfield.
+
+        Bit layout (uint16):
+          bit 0  = right traction motor
+          bit 1  = left traction motor
+          bit 2  = arm/joint motor 1 (J1a / joint-left)
+          bit 3  = arm/joint motor 2 (J1b / joint-right)
+          bit 4  = arm/joint motor 3 (J2 / joint-roll)
+          bit 5  = arm motor 4 (J3)
+          bit 6  = arm motor 5 (J4)
+          bit 7  = arm motor 6 (J5)
+          bits 8-15 = unused
+
+        Args:
+            torque_bitfield: uint16 bitmask, 1=enable torque, 0=disable.
+            destination: Target module address.
+        """
+        self.send(MsgType.TORQUE_ENABLE_DISABLE, destination, torque_bitfield=torque_bitfield)

@@ -19,6 +19,7 @@ Commands:
     send set_home [permanent]               Set current position as home (default: interim)
     send reboot_arm                         Reboot arm motors
     send reboot_traction                    Reboot traction motors
+    send torque <bitfield>                  Enable/disable per-motor torque (uint16 bitfield)
     stop                                    Emergency stop all motors
     monitor [filter]                        Start monitoring (filter: all|arm|traction|joint|feedback)
     test <name>                             Run test sequence (traction|arm_init|arm_joints|arm_beak|full)
@@ -198,6 +199,11 @@ class CLI:
             self.sender.reboot_traction(self.target)
             print("Rebooting traction motors...")
 
+        elif subcmd == "torque" and len(args) == 2:
+            bitfield = int(args[1], 0)  # Auto-detect hex (0x) or decimal
+            self.sender.torque_enable(bitfield, self.target)
+            print(f"Torque enable/disable: bitfield=0x{bitfield:04X}")
+
         elif subcmd == "joint_1a1b" and len(args) == 3:
             theta, phi = float(args[1]), float(args[2])
             self.sender.joint_pitch_1a1b(theta, phi, self.target)
@@ -211,7 +217,8 @@ class CLI:
         else:
             print(f"Unknown send command: '{subcmd}' with {len(args) - 1} args")
             print("Available: traction, arm_1a1b, arm_j2..j5, beak, reset_arm, "
-                  "set_home, reboot_arm, reboot_traction, joint_1a1b, joint_roll")
+                  "set_home, reboot_arm, reboot_traction, torque, "
+                  "joint_1a1b, joint_roll")
 
     def _handle_monitor(self, args: list[str]) -> None:
         filter_name = args[0].lower() if args else "all"

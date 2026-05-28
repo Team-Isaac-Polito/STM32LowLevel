@@ -128,6 +128,11 @@ python -m tools.can_tester.web_dashboard --demo
 
 # Custom port
 python -m tools.can_tester.web_dashboard -i gs_usb -c 0 -p 9000
+
+# Debug mode — print received CAN messages to terminal
+# Useful when the dashboard display isn't working, to verify the backend
+# is receiving messages from the adapter:
+python -m tools.can_tester.web_dashboard -i gs_usb -c 0 --debug
 ```
 
 Open `http://localhost:8080` in a browser. Features:
@@ -139,6 +144,11 @@ Open `http://localhost:8080` in a browser. Features:
 - Command descriptions with value ranges
 - Emergency stop button
 - Collapsible message statistics
+
+**Debugging:** If the dashboard shows no messages, use `--debug` to print received
+CAN messages to the terminal. You can also check `http://localhost:8080/status`
+to see the last received message. This helps distinguish between hardware issues
+(backend receives nothing) and display issues (backend receives but browser doesn't show).
 
 ### Interactive CLI
 

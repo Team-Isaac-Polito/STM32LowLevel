@@ -10,16 +10,16 @@ from __future__ import annotations
 import struct
 from typing import Any
 
-from .protocol import (
-    MsgType,
-    PayloadFormat,
-    PAYLOAD_FORMATS,
-    encode_can_id,
-    decode_can_id,
-    DecodedID,
-    ModuleAddress,
-    MSG_NAMES,
-)
+try:
+    from .protocol import (
+        MsgType, PayloadFormat, PAYLOAD_FORMATS, encode_can_id,
+        decode_can_id, DecodedID, ModuleAddress, MSG_NAMES,
+    )
+except ImportError:
+    from protocol import (
+        MsgType, PayloadFormat, PAYLOAD_FORMATS, encode_can_id,
+        decode_can_id, DecodedID, ModuleAddress, MSG_NAMES,
+    )
 
 
 def encode_payload(msg_type: int, **kwargs: Any) -> bytes:

@@ -8,6 +8,7 @@
 #include "fdcan.h"
 #include "main.h"
 #include "mod_config.h"
+#include "Debug.h"
 
 // TX FIFO element size in bytes: 2 header words + 2 data words (8 bytes) = 16 bytes
 // For classic 8-byte CAN frames, the TX element is 4 words × 4 bytes = 16 bytes.
@@ -42,8 +43,10 @@ void CanWrapper::begin()
 bool CanWrapper::sendMessage(uint8_t msgType, const void* data, uint8_t length)
 {
     // Check TX FIFO not full (FDCAN_TXFQS.TFQF)
-    if (FDCAN2->TXFQS & FDCAN_TXFQS_TFQF)
+    if (FDCAN2->TXFQS & FDCAN_TXFQS_TFQF) {
+        LOG_WARN("CAN: TX FIFO full\n");
         return false;
+    }
 
     // Get TX FIFO put index (FDCAN_TXFQS.TFQPI bits[17:16])
     uint32_t putIdx = (FDCAN2->TXFQS & FDCAN_TXFQS_TFQPI_Msk) >> FDCAN_TXFQS_TFQPI_Pos;
@@ -109,6 +112,8 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
 
     // Acknowledge RX FIFO0 (increment get index)
     FDCAN2->RXF0A = getIdx;
+    
+    LOG_DEBUG("CAN RX: type=0x%02X len=%u\n", *msgType, dlc);
 
     return true;
 }

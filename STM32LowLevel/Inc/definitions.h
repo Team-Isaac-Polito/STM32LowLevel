@@ -15,6 +15,7 @@
 
 // Main loop timings (ms)
 #define DT_BAT        1000U  ///< Battery & health check interval:  1 Hz
+#define DT_BAT_CAN    5000U  ///< Battery voltage CAN TX interval: 0.2 Hz (every 5 s)
 #define DT_TEL          40U  ///< CAN telemetry (sendFeedback) interval: 25 Hz
 #define DT_DXL_CHECK  1000U  ///< Dynamixel error-status poll interval:  1 Hz
 

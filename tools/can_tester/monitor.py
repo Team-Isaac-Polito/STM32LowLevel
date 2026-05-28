@@ -11,8 +11,12 @@ import time
 import sys
 from typing import Optional, Callable
 
-from .protocol import decode_can_id, MsgType, MSG_NAMES
-from .codec import decode_payload, format_decoded
+try:
+    from .protocol import decode_can_id, MsgType, MSG_NAMES
+    from .codec import decode_payload, format_decoded
+except ImportError:
+    from protocol import decode_can_id, MsgType, MSG_NAMES
+    from codec import decode_payload, format_decoded
 
 
 class CanMonitor:
@@ -151,11 +155,16 @@ FILTER_FEEDBACK = {
     MsgType.MOTOR_TRACTION_ERROR_STATUS, MsgType.MOTOR_ARM_ERROR_STATUS,
 }
 
+FILTER_BATTERY = {
+    MsgType.BATTERY_VOLTAGE, MsgType.BATTERY_PERCENT, MsgType.BATTERY_TEMPERATURE,
+}
+
 NAMED_FILTERS = {
     "arm": FILTER_ARM,
     "traction": FILTER_TRACTION,
     "joint": FILTER_JOINT,
     "imu": FILTER_IMU,
     "feedback": FILTER_FEEDBACK,
+    "battery": FILTER_BATTERY,
     "all": None,
 }

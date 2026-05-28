@@ -92,6 +92,7 @@ class MsgType(IntEnum):
     MOTOR_TRACTION_REBOOT = 0x71
     MOTOR_TRACTION_ERROR_STATUS = 0x72
     MOTOR_ARM_ERROR_STATUS = 0x73
+    TORQUE_ENABLE_DISABLE = 0x74
 
     # Arm velocity feedback
     ARM_PITCH_1a1b_FEEDBACK_VEL = 0x80
@@ -215,6 +216,9 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
 
     # Traction control (no payload)
     MsgType.MOTOR_TRACTION_REBOOT: PayloadFormat("", [], ""),
+
+    # Torque enable/disable — uint16 bitfield
+    MsgType.TORQUE_ENABLE_DISABLE: PayloadFormat("<H", ["torque_bitfield"], "bits"),
 
     # IMU raw data (debug)
     MsgType.IMU_RAW_ACCEL: PayloadFormat("<fff", ["ax", "ay", "az"], "g"),
