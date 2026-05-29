@@ -43,7 +43,8 @@ void CanWrapper::begin()
 bool CanWrapper::sendMessage(uint8_t msgType, const void* data, uint8_t length)
 {
     // Check TX FIFO not full (FDCAN_TXFQS.TFQF)
-    if (FDCAN2->TXFQS & FDCAN_TXFQS_TFQF) {
+    if (FDCAN2->TXFQS & FDCAN_TXFQS_TFQF)
+    {
         LOG_WARN("CAN: TX FIFO full\n");
         return false;
     }
@@ -112,7 +113,7 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
 
     // Acknowledge RX FIFO0 (increment get index)
     FDCAN2->RXF0A = getIdx;
-    
+
     LOG_DEBUG("CAN RX: type=0x%02X len=%u\n", *msgType, dlc);
 
     return true;

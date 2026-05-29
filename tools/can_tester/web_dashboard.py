@@ -104,6 +104,15 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
   rgba(255,255,255,0.1); padding: 4px 10px; border-radius: 4px; cursor: pointer;
   margin-right: 4px; font-size: 0.8rem; }
 .filter-bar button.active { background: var(--green); color: var(--bg); }
+.feed-controls { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.feed-controls input, .feed-controls select { background: var(--accent); color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;
+  font-size: 0.8rem; }
+.feed-controls input::placeholder { color: #888; }
+.feed-controls button { background: var(--accent); color: var(--text);
+  border: 1px solid rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px;
+  cursor: pointer; font-size: 0.8rem; }
+.feed-controls button:hover { background: rgba(255,255,255,0.1); }
 #latestValues table { width: 100%; border-collapse: collapse; }
 #latestValues td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
 #latestValues td:first-child { color: var(--blue); white-space: nowrap; }
@@ -122,12 +131,21 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
       <button data-filter="arm">Arm</button>
       <button data-filter="traction">Traction</button>
       <button data-filter="joint">Joint</button>
-      <button data-filter="imu">IMU</button>
-      <button data-filter="battery">Battery</button>
-      <button data-filter="feedback">Feedback</button>
-      <button id="pauseBtn" onclick="togglePause()" style="margin-left:12px">⏸ Pause</button>
     </div>
     <div id="feed"></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+      <input id="filterSearch" type="text" placeholder="Search text..." style="flex:1;background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:4px 8px;border-radius:4px;font-size:0.8rem" oninput="applyFilters()">
+      <input id="filterCanId" type="text" placeholder="PF hex (msg type)" title="Filter by PDU Format (message type) in hex. Exact match. Comma-separated for multiple. E.g.: 22 = Motor Feedback, 21 = Motor Setpoint, 64 = Joint Roll, 12 = Battery Voltage" style="width:160px;background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:4px 8px;border-radius:4px;font-size:0.8rem;font-family:monospace" oninput="applyFilters()">
+      <button id="pauseBtn" onclick="togglePause()" title="Pause/Resume feed" style="background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem">⏸ Pause</button>
+      <button onclick="clearFeed()" title="Clear feed" style="background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem">✕ Clear</button>
+    </div>
+    <div id="moduleFilterRow" style="display:flex;align-items:center;gap:4px;margin-top:4px;flex-wrap:wrap">
+      <span style="font-size:0.75rem;color:#888;margin-right:4px">Modules:</span>
+      <button class="module-filter-btn active" data-module="" onclick="toggleModuleFilter(this)" style="background:var(--green);color:var(--bg);border:1px solid var(--green);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75rem">All</button>
+      <button class="module-filter-btn" data-module="0x21" onclick="toggleModuleFilter(this)" style="background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75rem">MOD1</button>
+      <button class="module-filter-btn" data-module="0x22" onclick="toggleModuleFilter(this)" style="background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75rem">MOD2</button>
+      <button class="module-filter-btn" data-module="0x23" onclick="toggleModuleFilter(this)" style="background:var(--accent);color:var(--text);border:1px solid rgba(255,255,255,0.1);padding:2px 8px;border-radius:4px;cursor:pointer;font-size:0.75rem">MOD3</button>
+    </div>
     <div style="font-size:0.75rem;color:#666;margin-top:4px" id="scrollHint"></div>
   </div>
   <div>
@@ -201,6 +219,9 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
         </div>
       </div>
       <div style="margin-top:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:8px">
+        <label style="font-size:0.8rem;color:var(--blue);cursor:pointer" onclick="document.getElementById('seqPanel').style.display=document.getElementById('seqPanel').style.display==='none'?'':'none'">
+          Sequence Builder <span style="font-size:0.7rem">(click to expand)</span>
+        </label>
         <div id="seqPanel" style="display:none;margin-top:8px">
           <p style="font-size:0.75rem;color:#888;margin-bottom:6px">Build a sequence of commands with different parameters. Click "Add Current" to add the current command/params to the sequence.</p>
           <div style="display:flex;gap:4px;margin-bottom:8px">
@@ -231,6 +252,9 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
 </div>
 <script>
 let activeFilter = 'all';
+let filterText = '';
+let filterModules = new Set(); // empty = all modules
+let filterCanIds = []; // empty = all CAN IDs
 const feed = document.getElementById('feed');
 const maxLines = 200;
 const stats = {};
@@ -241,6 +265,8 @@ let paused = false;
 let msgBuffer = [];
 let dirty = false;
 let burstTimer = null;
+// Store all rendered messages for retroactive filtering
+let allMessages = [];
 
 // Detect if user scrolled up — pause auto-scroll
 feed.addEventListener('scroll', () => {
@@ -416,8 +442,109 @@ document.getElementById('filterBar').addEventListener('click', e => {
     document.querySelectorAll('.filter-bar button').forEach(b => b.classList.remove('active'));
     e.target.classList.add('active');
     activeFilter = e.target.dataset.filter;
+    applyFilters();
   }
 });
+
+// Toggle module filter button (multi-select)
+function toggleModuleFilter(btn) {
+  const mod = btn.dataset.module;
+  if (mod === '') {
+    // "All" clicked — deselect everything else
+    filterModules.clear();
+    document.querySelectorAll('.module-filter-btn').forEach(b => {
+      b.style.background = 'var(--accent)';
+      b.style.color = 'var(--text)';
+      b.style.borderColor = 'rgba(255,255,255,0.1)';
+    });
+    btn.style.background = 'var(--green)';
+    btn.style.color = 'var(--bg)';
+    btn.style.borderColor = 'var(--green)';
+  } else {
+    // Toggle specific module
+    const allBtn = document.querySelector('.module-filter-btn[data-module=""]');
+    if (filterModules.has(mod)) {
+      filterModules.delete(mod);
+      btn.style.background = 'var(--accent)';
+      btn.style.color = 'var(--text)';
+      btn.style.borderColor = 'rgba(255,255,255,0.1)';
+    } else {
+      filterModules.add(mod);
+      btn.style.background = 'var(--green)';
+      btn.style.color = 'var(--bg)';
+      btn.style.borderColor = 'var(--green)';
+    }
+    // If no modules selected, activate "All"
+    if (filterModules.size === 0) {
+      allBtn.style.background = 'var(--green)';
+      allBtn.style.color = 'var(--bg)';
+      allBtn.style.borderColor = 'var(--green)';
+    } else {
+      allBtn.style.background = 'var(--accent)';
+      allBtn.style.color = 'var(--text)';
+      allBtn.style.borderColor = 'rgba(255,255,255,0.1)';
+    }
+  }
+  applyFilters();
+}
+
+// Combined filter function — applies category + text + modules + CAN IDs
+function applyFilters() {
+  filterText = (document.getElementById('filterSearch') || {value: ''}).value.toLowerCase();
+  // Parse CAN IDs from comma-separated hex input
+  const canIdRaw = (document.getElementById('filterCanId') || {value: ''}).value.trim();
+  filterCanIds = canIdRaw ? canIdRaw.split(',').map(s => s.trim().toLowerCase().replace(/^0x/, '')).filter(s => s.length > 0) : [];
+  renderFilteredFeed();
+}
+
+function renderFilteredFeed() {
+  feed.innerHTML = '';
+  for (const d of allMessages) {
+    if (!messageMatchesFilters(d)) continue;
+    const div = document.createElement('div');
+    div.className = 'msg';
+    div.innerHTML = `<span class="src">${d.source}</span> → `
+      + `<span class="dst">${d.destination}</span> `
+      + `<span class="type">[${d.typeHex}] ${d.msg_name}</span> `
+      + `<span class="val">${d.payload_str}</span>`;
+    feed.appendChild(div);
+  }
+  while (feed.children.length > maxLines) feed.removeChild(feed.firstChild);
+  if (autoScroll) feed.scrollTop = feed.scrollHeight;
+}
+
+function messageMatchesFilters(d) {
+  // Category filter
+  if (activeFilter !== 'all' && !d.filter_tags.includes(activeFilter)) return false;
+  // Text search — matches against msg_name, source, destination, payload_str, typeHex
+  if (filterText) {
+    const haystack = (d.msg_name + ' ' + d.source + ' ' + d.destination + ' ' + d.payload_str + ' ' + d.typeHex).toLowerCase();
+    if (!haystack.includes(filterText)) return false;
+  }
+  // Module filter — multi-select: message matches if source OR destination is in selected modules
+  if (filterModules.size > 0) {
+    const srcHex = (d.source_hex || '').toLowerCase();
+    const dstHex = (d.destination_hex || '').toLowerCase();
+    let modMatch = false;
+    for (const mod of filterModules) {
+      if (srcHex === mod || dstHex === mod) { modMatch = true; break; }
+    }
+    if (!modMatch) return false;
+  }
+  // CAN ID filter — matches against the PF (PDU Format / message type) field only.
+  // Entering "22" matches all MOTOR_FEEDBACK messages (PF=0x22), regardless of source/destination.
+  // Comma-separated for multiple PF values. Exact 2-hex-digit match.
+  if (filterCanIds.length > 0) {
+    const pfHex = (d.msg_type || 0).toString(16).toLowerCase().padStart(2, '0');
+    if (!filterCanIds.includes(pfHex)) return false;
+  }
+  return true;
+}
+
+function clearFeed() {
+  allMessages = [];
+  feed.innerHTML = '';
+}
 
 // Statistics toggle
 function toggleStats() {
@@ -496,7 +623,15 @@ function togglePause() {
   paused = !paused;
   const btn = document.getElementById('pauseBtn');
   btn.textContent = paused ? '\u25b6 Resume' : '\u23f8 Pause';
-  btn.classList.toggle('active', paused);
+  if (paused) {
+    btn.style.background = 'var(--green)';
+    btn.style.color = 'var(--bg)';
+    btn.style.borderColor = 'var(--green)';
+  } else {
+    btn.style.background = 'var(--accent)';
+    btn.style.color = 'var(--text)';
+    btn.style.borderColor = 'rgba(255,255,255,0.1)';
+  }
 }
 
 // Batch DOM updates every 100 ms for performance
@@ -506,20 +641,11 @@ setInterval(() => {
   updateStats();
   updateLatestValues();
   if (!paused) {
-    const frag = document.createDocumentFragment();
     for (const d of msgBuffer) {
-      if (activeFilter !== 'all' && !d.filter_tags.includes(activeFilter)) continue;
-      const div = document.createElement('div');
-      div.className = 'msg';
-      div.innerHTML = `<span class="src">${d.source}</span> \u2192 `
-        + `<span class="dst">${d.destination}</span> `
-        + `<span class="type">[${d.typeHex}] ${d.msg_name}</span> `
-        + `<span class="val">${d.payload_str}</span>`;
-      frag.appendChild(div);
+      allMessages.push(d);
     }
-    feed.appendChild(frag);
-    while (feed.children.length > maxLines) feed.removeChild(feed.firstChild);
-    if (autoScroll) feed.scrollTop = feed.scrollHeight;
+    while (allMessages.length > maxLines) allMessages.shift();
+    renderFilteredFeed();
   }
   msgBuffer = [];
 }, 100);
@@ -843,9 +969,12 @@ def can_to_sse_callback(decoded_id, payload, raw_msg):
 
     event = {
         "source": decoded_id.source_name,
+        "source_hex": f"0x{decoded_id.source:02X}",
         "destination": decoded_id.destination_name,
+        "destination_hex": f"0x{decoded_id.destination:02X}",
         "msg_name": decoded_id.msg_name,
         "msg_type": decoded_id.msg_type,
+        "can_id": raw_msg.arbitration_id,
         "payload_str": payload_str,
         "payload": {k: v for k, v in payload.items() if not k.startswith("_")},
         "filter_tags": get_filter_tags(decoded_id.msg_type),
@@ -932,6 +1061,8 @@ def main():
         daemon=True,
     )
     monitor_thread.start()
+    if args.debug:
+        print(f"  Debug mode: CAN messages will be printed to terminal", flush=True)
 
     # Start demo message generator if in demo mode
     if args.demo:

@@ -51,6 +51,8 @@ class CanMonitor:
         """
         self._running = True
         start = time.time()
+        recv_count = 0
+        none_count = 0
 
         try:
             while self._running:
@@ -59,7 +61,12 @@ class CanMonitor:
 
                 msg = self.bus.recv(timeout=0.1)
                 if msg is None:
+                    none_count += 1
+                    if none_count % 50 == 0:
+                        print(f"[monitor] {none_count} timeouts, {recv_count} received so far", flush=True)
                     continue
+
+                recv_count += 1
 
                 decoded_id = decode_can_id(msg.arbitration_id)
 
@@ -81,7 +88,9 @@ class CanMonitor:
                 if not quiet:
                     ts = f"{msg.timestamp:.3f}" if msg.timestamp else f"{time.time():.3f}"
                     line = format_decoded(decoded_id, payload)
-                    print(f"[{ts}] {line}")
+                    print(f"[{ts}] {line}", flush=True)
+                    if not msg.is_fd:
+                        print(f"  RAW id=0x{msg.arbitration_id:08X} data={msg.data.hex()}", flush=True)
 
         except KeyboardInterrupt:
             pass
