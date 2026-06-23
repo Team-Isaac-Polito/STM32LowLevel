@@ -355,6 +355,7 @@ const TORQUE_MOTORS_ARM = [
   { bit: 5, name: 'Arm J3 (Forearm Roll)' },
   { bit: 6, name: 'Arm J4 (Wrist Pitch)' },
   { bit: 7, name: 'Arm J5 (Wrist Roll)' },
+  { bit: 8, name: 'Arm J6 (Beak/Gripper)' },
 ];
 const TORQUE_MOTORS_JOINT = [
   { bit: 0, name: 'Right Traction' },

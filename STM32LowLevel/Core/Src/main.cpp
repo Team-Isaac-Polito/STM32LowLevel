@@ -1435,13 +1435,14 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             motRight.setTorqueEnable((torqueBits & 0x0001U) != 0U);
             motLeft.setTorqueEnable((torqueBits & 0x0002U) != 0U);
 #ifdef MODC_ARM
-            // Bits 2-7 = arm motors J1a, J1b, J2, J3, J4, J5 (J6 beak excluded)
+            // Bits 2-8 = arm motors J1a, J1b, J2, J3, J4, J5, J6 (beak)
             armMot1a.setTorqueEnable((torqueBits & 0x0004U) != 0U);
             armMot1b.setTorqueEnable((torqueBits & 0x0008U) != 0U);
             armMot2.setTorqueEnable((torqueBits & 0x0010U) != 0U);
             armMot3.setTorqueEnable((torqueBits & 0x0020U) != 0U);
             armMot4.setTorqueEnable((torqueBits & 0x0040U) != 0U);
             armMot5.setTorqueEnable((torqueBits & 0x0080U) != 0U);
+            armMot6.setTorqueEnable((torqueBits & 0x0100U) != 0U);
 #endif
 #ifdef MODC_JOINT
             // Bits 2-4 = joint motors J1-left, J1-right, J2

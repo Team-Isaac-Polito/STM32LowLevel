@@ -165,7 +165,8 @@ class CanSender:
           bit 5  = arm motor 4 (J3)
           bit 6  = arm motor 5 (J4)
           bit 7  = arm motor 6 (J5)
-          bits 8-15 = unused
+          bit 8  = arm motor 7 (J6 / beak)
+          bits 9-15 = unused
 
         Args:
             torque_bitfield: uint16 bitmask, 1=enable torque, 0=disable.
