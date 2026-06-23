@@ -54,13 +54,13 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-// State machine for the beak/gripper motor (MODC_ARM only).
+// Beak gripper state (MODC_ARM only).
 enum class BeakState : uint8_t
 {
-    IDLE,
-    CLOSING,
-    OPENING,
-    HOLDING
+    IDLE,       ///< No active command, motor at last known position
+    GRIPPING,   ///< Close command sent, waiting for load/position confirmation
+    HOLDING,    ///< Grip confirmed, maintaining position with hold PWM
+    OPENING     ///< Open command sent, moving to open position
 };
 
 // LED identifiers
@@ -151,7 +151,7 @@ static int32_t armPosMot3 = 0, armOldPosMot3 = 0;
 static int32_t armPosMot4 = 0, armOldPosMot4 = 0;
 static int32_t armPosMot5 = 0, armOldPosMot5 = 0;
 
-// Beak gripper state machine
+// Beak gripper state
 static BeakState beakState = BeakState::IDLE;
 static uint32_t beakMotionStartMs = 0U;
 static uint32_t beakTempCheckMs = 0U; ///< Timestamp of last thermal check in HOLDING
@@ -416,6 +416,16 @@ extern "C" int main(void)
     // 5. ADC — Battery (ADC1 LL)
     battery.begin();
     LOG_INFO("[main] Battery ready, %.2f V\n", battery.readVoltage());
+
+    // Enable FDCAN error interrupts for bus-off recovery
+    HAL_FDCAN_ActivateNotification(&hfdcan2,
+        FDCAN_IT_BUS_OFF |
+        FDCAN_IT_ERROR_WARNING |
+        FDCAN_IT_ERROR_PASSIVE |
+        FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
+        0);
+    LOG_INFO("[main] FDCAN error interrupts enabled\n");
+
     LOG_INFO("[main] Init complete, entering main loop\n");
 
     /* USER CODE END 2 */
@@ -464,6 +474,29 @@ extern "C" int main(void)
             speedsDxl[1] = 0.0f;
             dxlTraction.setGoalVelocityRpm(speedsDxl);
             LOG_WARN("[main] CAN timeout, motors stopped\n");
+        }
+
+        // Periodic CAN bus health check (every 5 seconds)
+        {
+            static uint32_t lastCanHealthCheck = 0U;
+            if (now - lastCanHealthCheck >= 5000U)
+            {
+                lastCanHealthCheck = now;
+
+                // Check FDCAN Protocol Status Register for bus-off
+                uint32_t psr = hfdcan2.Instance->PSR;
+                uint32_t bo = (psr & FDCAN_PSR_BO_Msk) >> FDCAN_PSR_BO_Pos;
+
+                if (bo)
+                {
+                    LOG_WARN("[CAN] Bus-off detected in health check! Recovering...\n");
+                    // Clear the bus-off interrupt flag
+                    hfdcan2.Instance->IR = FDCAN_IR_BO;
+                    // Force recovery from bus-off by clearing INIT bit
+                    CLEAR_BIT(hfdcan2.Instance->CCCR, FDCAN_CCCR_INIT);
+                    canActive = false;
+                }
+            }
         }
 
 #ifdef MODC_ARM
@@ -849,14 +882,15 @@ static void dxlArmInit(void)
 
 /**
  * Advance the beak gripper state machine one step.
- * Transitions: IDLE → CLOSING → HOLDING → OPENING → IDLE
- * Thermal protection: every BEAK_TEMP_CHECK_MS ms in HOLDING,
- * halves hold PWM if temp ≥ BEAK_TEMP_LIMIT; transitions to IDLE on HW error.
+ *
+ * Thermal protection in HOLDING: every BEAK_TEMP_CHECK_MS, halve PWM if
+ * temp >= BEAK_TEMP_LIMIT. Transition to IDLE on HW error.
+ *
  * @param now HAL_GetTick() snapshot from the current loop iteration.
  */
 static void tickBeakStateMachine(uint32_t now)
 {
-    if (beakState == BeakState::CLOSING)
+    if (beakState == BeakState::GRIPPING)
     {
         int16_t load = 0;
         int32_t pos = 0;
@@ -869,16 +903,15 @@ static void tickBeakStateMachine(uint32_t now)
 
         if (loadDetected || posReached || timedOut)
         {
-            // Freeze at current position and reduce PWM to hold gently
-            armMot6.getPresentPosition(pos);
-            armMot6.setGoalPositionEpcm(pos);
+            // Grip confirmed — hold at the target close position (not current pos)
+            // Do NOT overwrite goal position; just reduce PWM for holding
             armMot6.setGoalPWM(BEAK_HOLD_PWM);
             beakState = BeakState::HOLDING;
             beakTempCheckMs = now;
-            LOG_INFO("[beak] CLOSING\xe2\x86\x92HOLDING%s\n",
+            LOG_INFO("[beak] GRIPPING->HOLDING%s (pos=%d)\n",
                      timedOut     ? " (timeout)"
                      : posReached ? " (pos)"
-                                  : " (load)");
+                                  : " (load)", pos);
         }
     }
     else if (beakState == BeakState::OPENING)
@@ -887,15 +920,17 @@ static void tickBeakStateMachine(uint32_t now)
         armMot6.getPresentPosition(pos);
 
         bool posReached = abs(pos - BEAK_POS_OPEN) <= BEAK_POS_TOLERANCE;
-        bool timedOut = (now - beakMotionStartMs) > BEAK_TIMEOUT_MS;
 
-        if (posReached || timedOut)
+        if (posReached)
         {
-            armMot6.setGoalPositionEpcm(pos);
+            // Open complete — hold at target position
+            armMot6.setGoalPositionEpcm(BEAK_POS_OPEN);
             armMot6.setGoalPWM(BEAK_FULL_PWM);
             beakState = BeakState::IDLE;
-            LOG_INFO("[beak] OPENING\xe2\x86\x92IDLE%s\n", timedOut ? " (timeout)" : " (pos)");
+            LOG_INFO("[beak] OPENING->IDLE (pos reached)\n");
         }
+        // Note: no timeout handling — if motor hasn't reached position,
+        // keep trying. The goal position is already set by handleSetpoint.
     }
     else if (beakState == BeakState::HOLDING)
     {
@@ -1250,20 +1285,31 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         {
             int32_t cmd;
             memcpy(&cmd, msgData, 4);
+            LOG_INFO("[CAN] BEAK cmd=%d (0x%02X)\n", cmd, msgData[0]);
+            int32_t posBefore = 0;
+            armMot6.getPresentPosition(posBefore);
+            LOG_INFO("[beak] posBefore=%d goal=%d\n", posBefore, (cmd == 1) ? BEAK_POS_OPEN : BEAK_POS_CLOSE);
             if (cmd == 0)
             {
+                // Close/grip command
                 armMot6.setGoalPWM(BEAK_FULL_PWM);
                 armMot6.setGoalPositionEpcm(BEAK_POS_CLOSE);
                 beakMotionStartMs = HAL_GetTick();
-                beakState = BeakState::CLOSING;
+                beakState = BeakState::GRIPPING;
+                LOG_INFO("[CAN] BEAK_CLOSE → GRIPPING\n");
             }
             else if (cmd == 1)
             {
+                // Open command — always works from any state
                 armMot6.setGoalPWM(BEAK_FULL_PWM);
                 armMot6.setGoalPositionEpcm(BEAK_POS_OPEN);
                 beakMotionStartMs = HAL_GetTick();
                 beakState = BeakState::OPENING;
+                LOG_INFO("[CAN] BEAK_OPEN → OPENING\n");
             }
+            int32_t posAfter = 0;
+            armMot6.getPresentPosition(posAfter);
+            LOG_INFO("[beak] posAfter=%d\n", posAfter);
             break;
         }
 
@@ -1430,3 +1476,33 @@ void assert_failed(uint8_t* file, uint32_t line)
     /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+/* USER CODE BEGIN CAN_Error_Handler */
+
+/**
+ * @brief  FDCAN error callback — handles bus-off and error states.
+ *         Called by the HAL when FDCAN error interrupts fire.
+ * @param  hfdcan: FDCAN handle
+ */
+void HAL_FDCAN_ErrorCallback(FDCAN_HandleTypeDef *hfdcan)
+{
+    uint32_t psr = READ_REG(hfdcan->Instance->PSR);
+    uint32_t bo = (psr & FDCAN_PSR_BO_Msk) >> FDCAN_PSR_BO_Pos;
+
+    if (bo)
+    {
+        LOG_WARN("[CAN] BUS-OFF detected! Initiating recovery...\n");
+
+        /* Clear the bus-off interrupt flag */
+        WRITE_REG(hfdcan->Instance->IR, FDCAN_IR_BO);
+
+        /* Request recovery from bus-off: clear INIT bit so the FDCAN
+         * peripheral can re-integrate with the bus after 128 occurrences
+         * of 11 recessive bits */
+        CLEAR_BIT(hfdcan->Instance->CCCR, FDCAN_CCCR_INIT);
+
+        LOG_INFO("[CAN] Bus-off recovery initiated\n");
+    }
+}
+
+/* USER CODE END CAN_Error_Handler */

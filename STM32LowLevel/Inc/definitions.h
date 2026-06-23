@@ -55,14 +55,14 @@
 // IMU sensor (LSM6DSL on I2C1, shared with AS5048B)
 #define IMU_ADDRESS               0x6AU  ///< I2C address of LSM6DSL (SDO/SA0 = GND)
 
-// Beak gripper state machine constants (motor J6, XL430-W250)
+// Beak gripper constants (motor J6, XL430-W250)
 #define BEAK_POS_OPEN        (-154)   ///< Open  position (DXL ext-pos units, ~-13.5°)
 #define BEAK_POS_CLOSE         154    ///< Close position (DXL ext-pos units, ~+13.5°)
 #define BEAK_LOAD_THRESHOLD    150    ///< Grip detection load threshold (0.1% units, ~15% torque)
 #define BEAK_POS_TOLERANCE      20    ///< Position tolerance to detect arrival (DXL units, ~1.7°)
 #define BEAK_TIMEOUT_MS       3000U   ///< Max motion time before giving up (ms)
-#define BEAK_HOLD_PWM          250    ///< Hold PWM after grip contact (~28% max PWM)
-#define BEAK_FULL_PWM          885    ///< Full PWM for free movement (100% max PWM)  
+#define BEAK_HOLD_PWM          750    ///< Hold PWM after grip contact
+#define BEAK_FULL_PWM          885    ///< Full PWM for free movement (100% max PWM)
 #define BEAK_TEMP_LIMIT         65    ///< Thermal protection: halve hold PWM above this (°C)
 #define BEAK_TEMP_CHECK_MS     500U   ///< Temperature check interval during HOLDING (ms)
 
