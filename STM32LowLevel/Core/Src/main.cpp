@@ -934,27 +934,41 @@ static void tickBeakStateMachine(uint32_t now)
     }
     else if (beakState == BeakState::HOLDING)
     {
-        if ((now - beakTempCheckMs) >= BEAK_TEMP_CHECK_MS)
+        // Current-based hold control: adjust PWM to maintain target load
+        if ((now - beakTempCheckMs) >= BEAK_HOLD_CTRL_MS)
         {
             beakTempCheckMs = now;
-            uint8_t temp = 0U;
-            uint8_t hwErr = 0U;
-            armMot6.getPresentTemperature(temp);
-            armMot6.getHardwareErrorStatus(hwErr);
 
+            int16_t currentLoad = 0;
+            armMot6.getCurrentLoad(currentLoad);
+
+            // Simple P-controller: adjust PWM based on load error
+            int16_t loadError = BEAK_HOLD_TARGET_LOAD - abs(currentLoad);
+            int16_t pwmAdjustment = BEAK_HOLD_KP * loadError;
+
+            int16_t newPWM = BEAK_HOLD_PWM + pwmAdjustment;
+            if (newPWM < BEAK_HOLD_MIN_PWM) newPWM = BEAK_HOLD_MIN_PWM;
+            if (newPWM > BEAK_HOLD_MAX_PWM) newPWM = BEAK_HOLD_MAX_PWM;
+
+            armMot6.setGoalPWM(newPWM);
+
+            // Safety: check temperature
+            uint8_t temp = 0U;
+            armMot6.getPresentTemperature(temp);
             if (temp >= BEAK_TEMP_LIMIT)
             {
-                armMot6.setGoalPWM(BEAK_HOLD_PWM / 2);
-                LOG_WARN("[beak] Thermal: %u deg"
-                         "C >= %u deg"
-                         "C limit, PWM halved\n",
-                         temp,
-                         (uint8_t)BEAK_TEMP_LIMIT);
+                armMot6.setGoalPWM(BEAK_HOLD_MIN_PWM);
+                LOG_WARN("[beak] Thermal: %u degC >= %u degC limit, PWM min\n",
+                         temp, (uint8_t)BEAK_TEMP_LIMIT);
             }
+
+            // Safety: check hardware error
+            uint8_t hwErr = 0U;
+            armMot6.getHardwareErrorStatus(hwErr);
             if (hwErr != 0U)
             {
                 beakState = BeakState::IDLE;
-                LOG_WARN("[beak] HW error 0x%02X in HOLDING \xe2\x86\x92 IDLE\n", hwErr);
+                LOG_WARN("[beak] HW error 0x%02X in HOLDING -> IDLE\n", hwErr);
             }
         }
     }

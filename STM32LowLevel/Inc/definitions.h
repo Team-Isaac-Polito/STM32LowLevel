@@ -61,10 +61,17 @@
 #define BEAK_LOAD_THRESHOLD    150    ///< Grip detection load threshold (0.1% units, ~15% torque)
 #define BEAK_POS_TOLERANCE      20    ///< Position tolerance to detect arrival (DXL units, ~1.7°)
 #define BEAK_TIMEOUT_MS       3000U   ///< Max motion time before giving up (ms)
-#define BEAK_HOLD_PWM          750    ///< Hold PWM after grip contact
+#define BEAK_HOLD_PWM          750    ///< Initial hold PWM after grip contact
 #define BEAK_FULL_PWM          885    ///< Full PWM for free movement (100% max PWM)
 #define BEAK_TEMP_LIMIT         65    ///< Thermal protection: halve hold PWM above this (°C)
 #define BEAK_TEMP_CHECK_MS     500U   ///< Temperature check interval during HOLDING (ms)
+
+// Current-based hold control constants
+#define BEAK_HOLD_TARGET_LOAD  200    ///< Target load for holding (~20% of stall)
+#define BEAK_HOLD_KP           2      ///< Proportional gain for current controller
+#define BEAK_HOLD_MIN_PWM      100    ///< Minimum hold PWM (prevents dropping)
+#define BEAK_HOLD_MAX_PWM      500    ///< Maximum hold PWM (prevents overheating)
+#define BEAK_HOLD_CTRL_MS      50     ///< Control loop interval (ms)
 
 // Arm motion profile (shared across all arm joints)
 #define ARM_PROFILE_VELOCITY      20   ///< Dynamixel profile velocity (DXL units)
