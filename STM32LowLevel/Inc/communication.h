@@ -61,6 +61,7 @@
 #define MOTOR_TRACTION_REBOOT       0x71  ///< Reboot traction motors           (no payload)
 #define MOTOR_TRACTION_ERROR_STATUS 0x72  ///< Traction HW error bytes — uint8[2]: right, left
 #define MOTOR_ARM_ERROR_STATUS      0x73  ///< Arm HW error bytes     — uint8[7]: J1a…J6
+#define TORQUE_ENABLE_DISABLE       0x74  ///< Per-motor torque enable/disable  — uint16 bitfield (1=enable, 0=disable per bit)
 
 // Arm velocity feedback — MK2 MOD1 only (0x8X)
 #define ARM_PITCH_1a1b_FEEDBACK_VEL 0x80  ///< Arm J1a/J1b velocity — Float×2, rad/s

@@ -284,7 +284,7 @@ uint8_t DynamixelLL::setGoalVelocityRpm(float rpm)
     if (rpm < -maxRPM)
         rpm = -maxRPM;
     int16_t val = (int16_t)(rpm / 0.229f);
-    return writeRegister(104u, (uint32_t)(uint16_t)val, 4u);
+    return writeRegister(104u, (uint32_t)val, 4u);
 }
 
 uint8_t DynamixelLL::getPresentVelocityRpm(float& rpm)

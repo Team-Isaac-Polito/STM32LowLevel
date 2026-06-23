@@ -94,7 +94,7 @@ target_include_directories(can_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32G4xx/Include
     ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
 )
-target_link_libraries(can_lib PUBLIC stm32cubemx)
+target_link_libraries(can_lib PUBLIC stm32cubemx debug_lib)
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE

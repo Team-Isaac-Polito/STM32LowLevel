@@ -376,7 +376,7 @@ uint8_t DynamixelLL::setGoalVelocityRpm(const float (&rpmValues)[N])
             rpm = maxRPM;
         if (rpm < -maxRPM)
             rpm = -maxRPM;
-        processed[i] = static_cast<uint32_t>(static_cast<uint16_t>(static_cast<int16_t>(rpm / 0.229f)));
+        processed[i] = static_cast<uint32_t>(static_cast<int16_t>(rpm / 0.229f));
     }
     return syncWrite(104, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
 }

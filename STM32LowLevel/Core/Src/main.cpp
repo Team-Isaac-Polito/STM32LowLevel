@@ -346,6 +346,11 @@ extern "C" int main(void)
         {}
     }
 
+    // Critical delay for Dynamixel motor power-up stabilization
+    // This is needed for normal power-on to ensure
+    // motors are ready for initialization commands
+    HAL_Delay(200);
+
     // Debug — must be first so all subsequent prints reach USB CDC
 #ifdef DEBUG
     debug.setLevel(Level::LogDebug);
@@ -615,14 +620,17 @@ static void dxlTractionInit(void)
     // Disable torque first for safe reconfiguration
     motLeft.setTorqueEnable(false);
     motRight.setTorqueEnable(false);
+    HAL_Delay(10U);
 
     // Status return level 2 — respond to all instructions
     motLeft.setStatusReturnLevel(2U);
     motRight.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
 
     // Drive mode: right motor needs reverseMode=true (opposite mounting)
     motLeft.setDriveMode(false, false, false);
     motRight.setDriveMode(false, false, true);
+    HAL_Delay(10U);
 
     // Operating mode 1 = velocity control
     dxlTraction.enableSync(tractionIds, n);
@@ -630,6 +638,7 @@ static void dxlTractionInit(void)
 
     // Instant velocity response (profile acceleration = 0)
     dxlTraction.setProfileAcceleration(0U);
+    HAL_Delay(10U);
 
     // Enable torque
     motLeft.setTorqueEnable(true);
@@ -1083,10 +1092,25 @@ static void sendFeedback(void)
 
 #ifdef MODC_IMU
     imu.update();
+// MK2_MOD3 has IMU rotated 90 deg, so roll/pitch are swapped and negative
+#if MODULE_DEFINE == MK2_MOD3
+    float imuRoll = -imu.getRoll();
+    float imuPitch = -imu.getPitch();
+    canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuPitch, 4U);
+    canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuRoll, 4U);
+// MK2_MOD1 has IMU flipped 180 deg, so pitch is negative
+#elif MODULE_DEFINE == MK2_MOD1
+    float imuRoll = imu.getRoll();
+    float imuPitch = -imu.getPitch();
+    canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuRoll, 4U);
+    canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuPitch, 4U);
+// MK2_MOD2 has IMU in standard orientation, so direct mapping
+#elif MODULE_DEFINE == MK2_MOD2
     float imuRoll = imu.getRoll();
     float imuPitch = imu.getPitch();
     canW.sendMessage(JOINT_ROLL_FEEDBACK, &imuRoll, 4U);
     canW.sendMessage(JOINT_PITCH_FEEDBACK, &imuPitch, 4U);
+#endif
     LOG_DEBUG("[IMU] Roll: %.2f deg, Pitch: %.2f deg\n", imuRoll, imuPitch);
 #endif // MODC_IMU
 
@@ -1107,6 +1131,18 @@ static void sendFeedback(void)
     float joint_posf_2_rad = (float)(jointPosf2 - jointPos0Mot2) * DXL_TO_RAD;
     canW.sendMessage(JOINT_ROLL_2_FEEDBACK, &joint_posf_2_rad, 4U);
 #endif // MODC_JOINT
+
+    // Battery voltage — all modules, low frequency (0.2 Hz)
+    {
+        static uint32_t lastBatCan = 0U;
+        uint32_t now = HAL_GetTick();
+        if (now - lastBatCan >= DT_BAT_CAN)
+        {
+            lastBatCan = now;
+            float vbat = battery.readVoltage();
+            canW.sendMessage(BATTERY_VOLTAGE, &vbat, 4U);
+        }
+    }
 }
 
 /**
@@ -1329,6 +1365,33 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             dxlTractionInit();
             LOG_INFO("[CAN] MOTOR_TRACTION_REBOOT: traction motors rebooted\n");
             break;
+
+        // Torque enable/disable — all modules
+        case TORQUE_ENABLE_DISABLE:
+        {
+            uint16_t torqueBits;
+            memcpy(&torqueBits, msgData, 2U);
+            // Bit 0 = right traction, bit 1 = left traction
+            motRight.setTorqueEnable((torqueBits & 0x0001U) != 0U);
+            motLeft.setTorqueEnable((torqueBits & 0x0002U) != 0U);
+#ifdef MODC_ARM
+            // Bits 2-7 = arm motors J1a, J1b, J2, J3, J4, J5 (J6 beak excluded)
+            armMot1a.setTorqueEnable((torqueBits & 0x0004U) != 0U);
+            armMot1b.setTorqueEnable((torqueBits & 0x0008U) != 0U);
+            armMot2.setTorqueEnable((torqueBits & 0x0010U) != 0U);
+            armMot3.setTorqueEnable((torqueBits & 0x0020U) != 0U);
+            armMot4.setTorqueEnable((torqueBits & 0x0040U) != 0U);
+            armMot5.setTorqueEnable((torqueBits & 0x0080U) != 0U);
+#endif
+#ifdef MODC_JOINT
+            // Bits 2-4 = joint motors J1-left, J1-right, J2
+            jointMot1L.setTorqueEnable((torqueBits & 0x0004U) != 0U);
+            jointMot1R.setTorqueEnable((torqueBits & 0x0008U) != 0U);
+            jointMot2.setTorqueEnable((torqueBits & 0x0010U) != 0U);
+#endif
+            LOG_INFO("[CAN] TORQUE_ENABLE_DISABLE: 0x%04X\n", torqueBits);
+            break;
+        }
 
         default:
             LOG_DEBUG("[CAN] Unknown msg_id: 0x%02X\n", msgId);
