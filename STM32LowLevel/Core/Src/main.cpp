@@ -57,10 +57,10 @@
 // Beak gripper state (MODC_ARM only).
 enum class BeakState : uint8_t
 {
-    IDLE,       ///< No active command, motor at last known position
-    GRIPPING,   ///< Close command sent, waiting for load/position confirmation
-    HOLDING,    ///< Grip confirmed, maintaining position with hold PWM
-    OPENING     ///< Open command sent, moving to open position
+    IDLE,     ///< No active command, motor at last known position
+    GRIPPING, ///< Close command sent, waiting for load/position confirmation
+    HOLDING,  ///< Grip confirmed, maintaining position with hold PWM
+    OPENING   ///< Open command sent, moving to open position
 };
 
 // LED identifiers
@@ -419,11 +419,9 @@ extern "C" int main(void)
 
     // Enable FDCAN error interrupts for bus-off recovery
     HAL_FDCAN_ActivateNotification(&hfdcan2,
-        FDCAN_IT_BUS_OFF |
-        FDCAN_IT_ERROR_WARNING |
-        FDCAN_IT_ERROR_PASSIVE |
-        FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
-        0);
+                                   FDCAN_IT_BUS_OFF | FDCAN_IT_ERROR_WARNING | FDCAN_IT_ERROR_PASSIVE |
+                                       FDCAN_IT_RX_FIFO0_NEW_MESSAGE,
+                                   0);
     LOG_INFO("[main] FDCAN error interrupts enabled\n");
 
     LOG_INFO("[main] Init complete, entering main loop\n");
@@ -911,7 +909,8 @@ static void tickBeakStateMachine(uint32_t now)
             LOG_INFO("[beak] GRIPPING->HOLDING%s (pos=%d)\n",
                      timedOut     ? " (timeout)"
                      : posReached ? " (pos)"
-                                  : " (load)", pos);
+                                  : " (load)",
+                     pos);
         }
     }
     else if (beakState == BeakState::OPENING)
@@ -947,8 +946,10 @@ static void tickBeakStateMachine(uint32_t now)
             int16_t pwmAdjustment = BEAK_HOLD_KP * loadError;
 
             int16_t newPWM = BEAK_HOLD_PWM + pwmAdjustment;
-            if (newPWM < BEAK_HOLD_MIN_PWM) newPWM = BEAK_HOLD_MIN_PWM;
-            if (newPWM > BEAK_HOLD_MAX_PWM) newPWM = BEAK_HOLD_MAX_PWM;
+            if (newPWM < BEAK_HOLD_MIN_PWM)
+                newPWM = BEAK_HOLD_MIN_PWM;
+            if (newPWM > BEAK_HOLD_MAX_PWM)
+                newPWM = BEAK_HOLD_MAX_PWM;
 
             armMot6.setGoalPWM(newPWM);
 
@@ -958,8 +959,7 @@ static void tickBeakStateMachine(uint32_t now)
             if (temp >= BEAK_TEMP_LIMIT)
             {
                 armMot6.setGoalPWM(BEAK_HOLD_MIN_PWM);
-                LOG_WARN("[beak] Thermal: %u degC >= %u degC limit, PWM min\n",
-                         temp, (uint8_t)BEAK_TEMP_LIMIT);
+                LOG_WARN("[beak] Thermal: %u degC >= %u degC limit, PWM min\n", temp, (uint8_t)BEAK_TEMP_LIMIT);
             }
 
             // Safety: check hardware error
@@ -1499,7 +1499,7 @@ void assert_failed(uint8_t* file, uint32_t line)
  *         Called by the HAL when FDCAN error interrupts fire.
  * @param  hfdcan: FDCAN handle
  */
-void HAL_FDCAN_ErrorCallback(FDCAN_HandleTypeDef *hfdcan)
+void HAL_FDCAN_ErrorCallback(FDCAN_HandleTypeDef* hfdcan)
 {
     uint32_t psr = READ_REG(hfdcan->Instance->PSR);
     uint32_t bo = (psr & FDCAN_PSR_BO_Msk) >> FDCAN_PSR_BO_Pos;
