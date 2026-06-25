@@ -173,3 +173,16 @@ class CanSender:
             destination: Target module address.
         """
         self.send(MsgType.TORQUE_ENABLE_DISABLE, destination, torque_bitfield=torque_bitfield)
+
+    def led_hp_brightness(
+        self,
+        brightness: int,
+        destination: int = ModuleAddress.MK2_MOD1,
+    ) -> None:
+        """Set LED HP board brightness via PWM.
+
+        Args:
+            brightness: 0 (off) to 255 (max brightness).
+            destination: Target module address.
+        """
+        self.send(MsgType.LED_HP_BRIGHTNESS, destination, brightness=brightness)

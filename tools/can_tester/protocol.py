@@ -93,6 +93,7 @@ class MsgType(IntEnum):
     MOTOR_TRACTION_ERROR_STATUS = 0x72
     MOTOR_ARM_ERROR_STATUS = 0x73
     TORQUE_ENABLE_DISABLE = 0x74
+    LED_HP_BRIGHTNESS = 0x75
 
     # Arm velocity feedback
     ARM_PITCH_1a1b_FEEDBACK_VEL = 0x80
@@ -219,6 +220,9 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
 
     # Torque enable/disable — uint16 bitfield
     MsgType.TORQUE_ENABLE_DISABLE: PayloadFormat("<H", ["torque_bitfield"], "bits"),
+
+    # LED HP board brightness — uint8 (0=off, 255=max)
+    MsgType.LED_HP_BRIGHTNESS: PayloadFormat("<B", ["brightness"], "0-255"),
 
     # IMU raw data (debug)
     MsgType.IMU_RAW_ACCEL: PayloadFormat("<fff", ["ax", "ay", "az"], "g"),
