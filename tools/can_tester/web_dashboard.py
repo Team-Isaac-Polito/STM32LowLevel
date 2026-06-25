@@ -298,6 +298,9 @@ const CMDS_ARM = [
     { val: 'reboot_traction', label: 'Reboot Traction — Restart DC motors' },
     { val: 'stop_all', label: 'Emergency Stop — Zero all motors' },
   ]},
+  { group: 'LED', items: [
+    { val: 'led_hp', label: 'LED HP Board — Set brightness (0-255)' },
+  ]},
 ];
 
 const CMDS_JOINT = [
@@ -338,6 +341,8 @@ const CMD_INFO = {
   stop_all:   { desc: 'Emergency stop — sends zero speed to all traction motors on all modules.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   torque:     { desc: 'Enable or disable torque for a single motor.',
                  lbl1: 'Motor', lbl2: 'State', inputs: 'torque', step: 1 },
+  led_hp:     { desc: 'Set LED HP board brightness for search and rescue illumination.',
+                 lbl1: 'Brightness (0-255)', lbl2: '', inputs: 1, step: 16 },
   joint_1a1b: { desc: 'Set inter-module joint differential pitch/yaw. Theta controls yaw, phi controls pitch. Range: approx -1.57 to 1.57 rad.',
                  lbl1: 'Theta / Yaw (rad)', lbl2: 'Phi / Pitch (rad)', inputs: 2, step: 0.05 },
   joint_roll: { desc: 'Set inter-module joint axial roll. Range: approx -3.14 to 3.14 rad.',
@@ -858,6 +863,11 @@ def stream():
 
     def generate():
         try:
+            # Replay buffered messages from before client connected
+            with _msg_buffer_lock:
+                for msg in _msg_buffer:
+                    yield f"data: {json.dumps(msg)}\n\n"
+
             while True:
                 try:
                     data = q.get(timeout=30)
@@ -934,6 +944,10 @@ def send_command():
             # Accept hex (0x...) or decimal bitfield
             bitfield = int(data.get("val1", 0))
             sender.torque_enable(bitfield, destination=dest)
+        elif cmd == "led_hp":
+            brightness = int(data.get("val1", 0))
+            brightness = max(0, min(255, brightness))
+            sender.led_hp_brightness(brightness, destination=dest)
         elif cmd == "stop_all":
             sender.stop_all()
         else:

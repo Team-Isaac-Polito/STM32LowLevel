@@ -20,6 +20,7 @@ Commands:
     send reboot_arm                         Reboot arm motors
     send reboot_traction                    Reboot traction motors
     send torque <bitfield>                  Enable/disable per-motor torque (uint16 bitfield)
+    send led_hp <brightness>                 Set LED HP board brightness (0-255)
     stop                                    Emergency stop all motors
     monitor [filter]                        Start monitoring (filter: all|arm|traction|joint|feedback)
     test <name>                             Run test sequence (traction|arm_init|arm_joints|arm_beak|full)
@@ -203,6 +204,14 @@ class CLI:
             bitfield = int(args[1], 0)  # Auto-detect hex (0x) or decimal
             self.sender.torque_enable(bitfield, self.target)
             print(f"Torque enable/disable: bitfield=0x{bitfield:04X}")
+
+        elif subcmd == "led_hp" and len(args) == 2:
+            brightness = int(args[1])
+            if brightness < 0 or brightness > 255:
+                print("Usage: send led_hp <0-255>")
+                return
+            self.sender.led_hp_brightness(brightness, self.target)
+            print(f"LED HP brightness: {brightness}")
 
         elif subcmd == "joint_1a1b" and len(args) == 3:
             theta, phi = float(args[1]), float(args[2])

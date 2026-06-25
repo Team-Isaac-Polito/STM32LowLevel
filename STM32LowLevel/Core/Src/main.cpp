@@ -194,6 +194,8 @@ static bool loadHomePositions(void);
 static bool saveHomePositions(void);
 static void tickBeakStateMachine(uint32_t now);
 #endif
+static void ledHpInit(void);
+static void ledHpSetBrightness(uint8_t brightness);
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
 #endif
@@ -366,6 +368,9 @@ extern "C" int main(void)
     // CAN — begin() releases STBY, so must come after MX_FDCAN2_Init()
     canW.begin();
     LOG_INFO("[main] CAN ready\n");
+
+    // LED HP board PWM init (TIM2_CH4 on PA3)
+    ledHpInit();
 
     // DXL bus init — DE pin direction and RX flush
     dxlBusInit(USART2);
@@ -976,6 +981,52 @@ static void tickBeakStateMachine(uint32_t now)
 }
 #endif // MODC_ARM
 
+/**
+ * Initialise LED HP board PWM control on TIM2_CH4 (PA3).
+ * PWM frequency ~10 kHz for flicker-free dimming.
+ */
+static void ledHpInit(void)
+{
+    // TIM2 is already configured by MX_TIM2_Init(), but the counter
+    // and CH4 output are not enabled. Fix the ARR and enable.
+
+    // Disable timer before reconfiguration
+    LL_TIM_DisableCounter(TIM2);
+
+    // Set ARR for ~10 kHz PWM: 170 MHz / 10000 = 17000
+    LL_TIM_SetAutoReload(TIM2, 16999U);
+
+    // Set initial duty cycle = 0 (off)
+    LL_TIM_OC_SetCompareCH4(TIM2, 0U);
+
+    // Enable CH4 output
+    LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH4);
+
+    // Enable auto-reload preload
+    LL_TIM_EnableARRPreload(TIM2);
+
+    // Start counter
+    LL_TIM_EnableCounter(TIM2);
+
+    LOG_INFO("[LED_HP] PWM init: TIM2_CH4 PA3, ARR=%u\n", (unsigned)LL_TIM_GetAutoReload(TIM2));
+}
+
+/**
+ * Set LED HP board brightness.
+ * @param brightness 0 = off, 255 = max brightness
+ */
+static void ledHpSetBrightness(uint8_t brightness)
+{
+    // Map 0-255 to 0-ARR for linear brightness
+    // Inverted: the LED HP board enable is active-low through the N-FET stage,
+    // so 0% duty (compare=0) = LEDs ON, 100% duty (compare=ARR) = LEDs OFF.
+    uint32_t arr = LL_TIM_GetAutoReload(TIM2);
+    uint32_t compare = ((uint32_t)(255U - brightness) * arr) / 255U;
+    LL_TIM_OC_SetCompareCH4(TIM2, compare);
+
+    LOG_DEBUG("[LED_HP] brightness=%u compare=%u\n", brightness, (unsigned)compare);
+}
+
 #ifdef MODC_JOINT
 /**
  * Initialise all 3 joint Dynamixel motors on USART2.
@@ -1451,6 +1502,16 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             jointMot2.setTorqueEnable((torqueBits & 0x0010U) != 0U);
 #endif
             LOG_INFO("[CAN] TORQUE_ENABLE_DISABLE: 0x%04X\n", torqueBits);
+            break;
+        }
+
+        // LED HP board brightness — all modules
+        case LED_HP_BRIGHTNESS:
+        {
+            uint8_t brightness;
+            memcpy(&brightness, msgData, 1U);
+            ledHpSetBrightness(brightness);
+            LOG_INFO("[CAN] LED_HP_BRIGHTNESS: %u\n", brightness);
             break;
         }
 
