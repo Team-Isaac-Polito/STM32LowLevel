@@ -996,8 +996,9 @@ static void ledHpInit(void)
     // Set ARR for ~10 kHz PWM: 170 MHz / 10000 = 17000
     LL_TIM_SetAutoReload(TIM2, 16999U);
 
-    // Set initial duty cycle = 0 (off)
-    LL_TIM_OC_SetCompareCH4(TIM2, 0U);
+    // Set initial duty cycle = 0% (LEDs off)
+    // Inverted logic: compare = ARR means 0% duty = LEDs off
+    LL_TIM_OC_SetCompareCH4(TIM2, 16999U);
 
     // Enable CH4 output
     LL_TIM_CC_EnableChannel(TIM2, LL_TIM_CHANNEL_CH4);
