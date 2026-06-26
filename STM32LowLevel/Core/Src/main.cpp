@@ -194,8 +194,10 @@ static bool loadHomePositions(void);
 static bool saveHomePositions(void);
 static void tickBeakStateMachine(uint32_t now);
 #endif
+#ifdef MODC_ARM
 static void ledHpInit(void);
 static void ledHpSetBrightness(uint8_t brightness);
+#endif
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
 #endif
@@ -369,8 +371,10 @@ extern "C" int main(void)
     canW.begin();
     LOG_INFO("[main] CAN ready\n");
 
+#ifdef MODC_ARM
     // LED HP board PWM init (TIM2_CH4 on PA3)
     ledHpInit();
+#endif
 
     // DXL bus init — DE pin direction and RX flush
     dxlBusInit(USART2);
@@ -981,6 +985,7 @@ static void tickBeakStateMachine(uint32_t now)
 }
 #endif // MODC_ARM
 
+#ifdef MODC_ARM
 /**
  * Initialise LED HP board PWM control on TIM2_CH4 (PA3).
  * PWM frequency ~10 kHz for flicker-free dimming.
@@ -1027,6 +1032,7 @@ static void ledHpSetBrightness(uint8_t brightness)
 
     LOG_DEBUG("[LED_HP] brightness=%u compare=%u\n", brightness, (unsigned)compare);
 }
+#endif // MODC_ARM
 
 #ifdef MODC_JOINT
 /**
@@ -1506,7 +1512,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             break;
         }
 
-        // LED HP board brightness — all modules
+#ifdef MODC_ARM
+        // LED HP board brightness — MOD1 only
         case LED_HP_BRIGHTNESS:
         {
             uint8_t brightness;
@@ -1515,6 +1522,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             LOG_INFO("[CAN] LED_HP_BRIGHTNESS: %u\n", brightness);
             break;
         }
+#endif
 
         default:
             LOG_DEBUG("[CAN] Unknown msg_id: 0x%02X\n", msgId);
