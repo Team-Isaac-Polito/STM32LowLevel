@@ -144,6 +144,20 @@ class CanSender:
         """Set inter-module joint roll."""
         self.send(MsgType.JOINT_ROLL_2_SETPOINT, destination, angle=angle)
 
+    def cable_rol(self, position: float, destination: int = ModuleAddress.MK2_MOD3) -> None:
+        """Set cable roll target position (radians)."""
+        self.send(MsgType.CABLE_ROL_SETPOINT, destination, position=position)
+
+    def cable_rol_compliance(self, enable: bool, target_load: int = 100,
+                              destination: int = ModuleAddress.MK2_MOD3) -> None:
+        """Enable/disable active compliance (auto tension control)."""
+        self.send(MsgType.CABLE_ROL_COMPLIANCE_CTRL, destination,
+                  enable=1 if enable else 0, target_load=target_load)
+
+    def reset_cable(self, destination: int = ModuleAddress.MK2_MOD3) -> None:
+        """Move cable roll motor back to home position (0 rad)."""
+        self.send(MsgType.CABLE_ROL_SETPOINT, destination, position=0.0)
+
     def stop_all(self) -> None:
         """Emergency stop: zero all motor speeds."""
         for dest in [ModuleAddress.MK2_MOD1, ModuleAddress.MK2_MOD2, ModuleAddress.MK2_MOD3]:

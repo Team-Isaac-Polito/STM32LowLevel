@@ -83,6 +83,27 @@
 #define ARM_HOME_NUM_MOTORS   7                                        ///< Number of arm motors (including beak/gripper)
 #define ARM_DEFAULT_HOME      {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6
 
+// Cable roll configuration (MOD3)
+#define CABLE_ROL_PROFILE_VELOCITY     500  ///< Profile velocity (DXL units)
+#define CABLE_ROL_PROFILE_ACCELERATION 200   ///< Profile acceleration (DXL units)
+#define CABLE_ROL_DEADZONE             5    ///< Deadzone for position commands (DXL units)
+#define CABLE_ROL_RAD_TO_DXL           (4096.0f / (2.0f * 3.14159265f))  ///< Radians to DXL position units
+#define CABLE_ROL_DEFAULT_HOME         0.0f   ///< Default home = fully wound (cable shortest, 0 rad)
+
+// Cable roll active compliance (tension control via present load feedback)
+// Uses Extended Position Control mode (4) — motor holds position, we adjust goal position based on load.
+// Maintains a small target load (healthy tension) by adjusting goal position.
+// - Load > target + deadzone → cable too tight → RELEASE (decrease goal position = pay out)
+// - Load < target - deadzone → cable too slack → RETRACT (increase goal position toward home)
+// - Load within target ± deadzone → HOLD (healthy tension achieved)
+// Primary use: protect ethernet cable when operator pulls (release).
+// Secondary: retract cautiously when robot approaches operator (cable slack).
+#define CABLE_ROL_CTRL_MS                10    ///< Control loop interval (ms) — 100 Hz
+#define CABLE_ROL_TARGET_LOAD            10    ///< Target load (~40 mA) — small healthy tension to maintain
+#define CABLE_ROL_LOAD_DEADZONE          5     ///< Wide deadzone around target load — reduce oscillation
+#define CABLE_ROL_RELEASE_STEP           100    ///< Goal position step per cycle when releasing (faster pay out)
+#define CABLE_ROL_RETRACT_STEP           100    ///< Goal position step per cycle when retracting (cautious)
+
 // Flash storage for home positions (STM32G474, 512 KB Flash with dual bank)
 #define HOME_FLASH_PAGE_ADDR    0x0807F800UL  ///< Start address of last Flash page (Bank 2, page 127)
 #define HOME_FLASH_PAGE_SIZE    2048U         ///< Page size (bytes) — 2 KB in dual-bank mode (DBANK=1)
