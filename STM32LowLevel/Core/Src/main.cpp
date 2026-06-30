@@ -1287,8 +1287,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             memcpy(&theta, msgData, 4);
             memcpy(&phi, msgData + 4, 4);
 
-            armPosMot1Lr[0] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[0];
-            armPosMot1Lr[1] = (int32_t)((theta * RAD_TO_DXL) + (phi * RAD_TO_DXL)) + armPos0Mot1Lr[1];
+            armPosMot1Lr[0] = (int32_t)(-(theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[0];
+            armPosMot1Lr[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[1];
 
             if ((abs(armPosMot1Lr[0] - armOldPosMot1Lr[0]) > ARM_DE_CAN_DXL) ||
                 (abs(armPosMot1Lr[1] - armOldPosMot1Lr[1]) > ARM_DE_CAN_DXL))
