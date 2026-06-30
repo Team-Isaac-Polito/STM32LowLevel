@@ -557,7 +557,8 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
 uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t size)
 {
-    if (_sync)
+    // Only use sync write for broadcast handles (servoID == 0) that have sync enabled
+    if (_sync && _servoID == 0)
     {
         uint32_t buf[_numMotors];
         for (uint8_t i = 0; i < _numMotors; ++i)

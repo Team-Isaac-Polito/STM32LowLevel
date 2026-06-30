@@ -57,6 +57,12 @@
 #define JOINT_ROLL_2_SETPOINT       0x63  ///< Joint roll setpoint — Float, rad
 #define JOINT_ROLL_2_FEEDBACK       0x64  ///< Joint roll feedback — Float, rad
 
+// Cable roll — MK2 MOD3 only (0xAX)
+#define CABLE_ROL_SETPOINT          0xA0  ///< Cable roll position setpoint — Float, rad
+#define CABLE_ROL_FEEDBACK          0xA1  ///< Cable roll position feedback — Float, rad
+#define CABLE_ROL_COMPLIANCE_CTRL   0xA2  ///< Compliance enable/disable + target load — uint8 enable, int16 target_load
+#define CABLE_ROL_LOAD_FEEDBACK     0xA3  ///< Cable roll present load feedback — int16 load
+
 // Status and control (0x7X)
 #define MOTOR_TRACTION_REBOOT       0x71  ///< Reboot traction motors           (no payload)
 #define MOTOR_TRACTION_ERROR_STATUS 0x72  ///< Traction HW error bytes — uint8[2]: right, left

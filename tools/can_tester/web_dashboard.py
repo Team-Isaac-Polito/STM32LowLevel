@@ -131,6 +131,7 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
       <button data-filter="arm">Arm</button>
       <button data-filter="traction">Traction</button>
       <button data-filter="joint">Joint</button>
+      <button data-filter="cable">Cable</button>
     </div>
     <div id="feed"></div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
@@ -318,6 +319,26 @@ const CMDS_JOINT = [
   ]},
 ];
 
+const CMDS_CABLE = [
+  { group: 'Traction', items: [
+    { val: 'traction', label: 'Traction Motors — Set wheel speeds' },
+  ]},
+  { group: 'Inter-Module Joint', items: [
+    { val: 'joint_1a1b', label: 'Joint Pitch (Differential) — Pitch/yaw pair' },
+    { val: 'joint_roll', label: 'Joint Roll — Axial rotation' },
+  ]},
+  { group: 'Cable Roll', items: [
+    { val: 'cable_rol', label: 'Cable Roll — Position setpoint' },
+    { val: 'cable_comply', label: 'Cable Roll — Auto tension (compliance)' },
+    { val: 'reset_cable', label: 'Cable Roll — Go back to home position' },
+  ]},
+  { group: 'System', items: [
+    { val: 'torque', label: 'Torque Enable/Disable — Per-motor torque control (bitfield)' },
+    { val: 'reboot_traction', label: 'Reboot Traction — Restart DC motors' },
+    { val: 'stop_all', label: 'Emergency Stop — Zero all motors' },
+  ]},
+];
+
 // Command metadata: description, field labels, numeric input count, step size
 const CMD_INFO = {
   traction:    { desc: 'Set traction motor speeds. Positive = forward, negative = reverse. Typical range: -200 to 200 RPM.',
@@ -347,6 +368,12 @@ const CMD_INFO = {
                  lbl1: 'Theta / Yaw (rad)', lbl2: 'Phi / Pitch (rad)', inputs: 2, step: 0.05 },
   joint_roll: { desc: 'Set inter-module joint axial roll. Range: approx -3.14 to 3.14 rad.',
                  lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
+  cable_rol:  { desc: 'Set cable roll target position. Positive = wind in, negative = wind out. Range: unlimited (multi-turn).',
+                 lbl1: 'Position (rad)', lbl2: '', inputs: 1, step: 0.1 },
+  cable_comply: { desc: 'Enable automatic tension control. Motor releases cable when pulled tight and retracts when slack. Set target load (DXL units, 0-1000).',
+                 lbl1: 'Target load', lbl2: '', inputs: 1, step: 10 },
+  reset_cable: { desc: 'Move cable roll motor back to its home position (0 rad). Home is set at startup or via SET_HOME command.',
+                 lbl1: '', lbl2: '', inputs: 0, step: 1 },
 };
 
 // Motor options for torque command — per module type
@@ -369,6 +396,14 @@ const TORQUE_MOTORS_JOINT = [
   { bit: 3, name: 'Joint J1-Right (Yaw)' },
   { bit: 4, name: 'Joint J2 (Roll)' },
 ];
+const TORQUE_MOTORS_CABLE = [
+  { bit: 0, name: 'Right Traction' },
+  { bit: 1, name: 'Left Traction' },
+  { bit: 2, name: 'Joint J1-Left (Pitch)' },
+  { bit: 3, name: 'Joint J1-Right (Yaw)' },
+  { bit: 4, name: 'Joint J2 (Roll)' },
+  { bit: 5, name: 'Cable Roll Motor' },
+];
 const TORQUE_STATES = [
   { val: 1, label: 'ON (enable torque)' },
   { val: 0, label: 'OFF (disable torque)' },
@@ -378,7 +413,8 @@ const TORQUE_STATES = [
 function rebuildCommandDropdown() {
   const mod = document.getElementById('targetModule').value;
   const isArm = mod === '0x21';  // MK2_MOD1 has arm
-  const cmds = isArm ? CMDS_ARM : CMDS_JOINT;
+  const isCable = mod === '0x23';  // MK2_MOD3 has cable roll
+  const cmds = isArm ? CMDS_ARM : (isCable ? CMDS_CABLE : CMDS_JOINT);
   const sel = document.getElementById('cmdType');
   const prev = sel.value;
   sel.innerHTML = '';
@@ -433,8 +469,8 @@ function updateForm() {
   }
   // Show permanent checkbox for set_home
   document.getElementById('cmdOptions').style.display = info.hasOptions ? '' : 'none';
-  // Show relative mode for arm/joint angle commands
-  const isAngle = cmd.startsWith('arm_') || cmd.startsWith('joint_');
+  // Show relative mode for arm/joint/cable angle commands
+  const isAngle = cmd.startsWith('arm_') || cmd.startsWith('joint_') || cmd.startsWith('cable_');
   document.getElementById('relativeMode').style.display = (isAngle && info.inputs > 0) ? '' : 'none';
   // Show torque quick-preset buttons
   const torquePresets = document.getElementById('torquePresets');
@@ -670,7 +706,8 @@ const torqueState = { '0x21': 0xFF, '0x22': 0xFF, '0x23': 0xFF }; // Start all e
 function rebuildTorqueMotors() {
   const mod = document.getElementById('targetModule').value;
   const isArm = mod === '0x21';
-  const motors = isArm ? TORQUE_MOTORS_ARM : TORQUE_MOTORS_JOINT;
+  const isCable = mod === '0x23';
+  const motors = isArm ? TORQUE_MOTORS_ARM : (isCable ? TORQUE_MOTORS_CABLE : TORQUE_MOTORS_JOINT);
   const sel = document.getElementById('torqueMotor');
   if (!sel) return;
   sel.innerHTML = '';
@@ -940,6 +977,12 @@ def send_command():
             sender.joint_pitch_1a1b(v1, v2, destination=dest)
         elif cmd == "joint_roll":
             sender.joint_roll(v1, destination=dest)
+        elif cmd == "cable_rol":
+            sender.cable_rol(v1)
+        elif cmd == "cable_comply":
+            sender.cable_rol_compliance(enable=True, target_load=int(v1))
+        elif cmd == "reset_cable":
+            sender.reset_cable()
         elif cmd == "torque":
             # Accept hex (0x...) or decimal bitfield
             bitfield = int(data.get("val1", 0))

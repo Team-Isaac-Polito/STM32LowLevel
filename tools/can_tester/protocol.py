@@ -88,6 +88,12 @@ class MsgType(IntEnum):
     JOINT_ROLL_2_SETPOINT = 0x63
     JOINT_ROLL_2_FEEDBACK = 0x64
 
+    # Cable roll - MK2 MOD3 only (0xAX)
+    CABLE_ROL_SETPOINT = 0xA0    # Cable roll setpoint - Float, target position (rad)
+    CABLE_ROL_FEEDBACK = 0xA1    # Cable roll feedback - Float, current position (rad)
+    CABLE_ROL_COMPLIANCE_CTRL = 0xA2  # Compliance control - uint8 enable, int16 target_load
+    CABLE_ROL_LOAD_FEEDBACK = 0xA3    # Cable roll load feedback - int16 present load
+
     # Motor control / status
     MOTOR_TRACTION_REBOOT = 0x71
     MOTOR_TRACTION_ERROR_STATUS = 0x72
@@ -208,6 +214,12 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
     MsgType.JOINT_PITCH_1a1b_FEEDBACK: PayloadFormat("<ff", ["theta", "phi"], "rad"),
     MsgType.JOINT_ROLL_2_SETPOINT: PayloadFormat("<f", ["angle"], "rad"),
     MsgType.JOINT_ROLL_2_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
+
+    # Cable roll (0xAX)
+    MsgType.CABLE_ROL_SETPOINT: PayloadFormat("<f", ["position"], "rad"),
+    MsgType.CABLE_ROL_FEEDBACK: PayloadFormat("<f", ["position"], "rad"),
+    MsgType.CABLE_ROL_COMPLIANCE_CTRL: PayloadFormat("<Bh", ["enable", "target_load"], "0/1, DXL load units"),
+    MsgType.CABLE_ROL_LOAD_FEEDBACK: PayloadFormat("<h", ["load"], "DXL load units"),
 
     # Status
     MsgType.MOTOR_TRACTION_ERROR_STATUS: PayloadFormat("<BB", ["motor_right", "motor_left"], "error_bits"),
