@@ -1043,58 +1043,69 @@ static void DXL_JOINT_INIT(void)
 {
     jointMot1L.setTorqueEnable(false);
     jointMot1R.setTorqueEnable(false);
-    jointMot2.setTorqueEnable(false);
+    // jointMot2.setTorqueEnable(false);
     HAL_Delay(10U);
 
     jointMot1L.setStatusReturnLevel(2U);
     jointMot1R.setStatusReturnLevel(2U);
-    jointMot2.setStatusReturnLevel(2U);
+    // jointMot2.setStatusReturnLevel(2U);
     HAL_Delay(10U);
 
     jointDxl.enableSync(jointIds, sizeof(jointIds));
+    HAL_Delay(10U);
 
     jointMot1L.setDriveMode(false, false, false);
     jointMot1R.setDriveMode(false, false, false);
-    jointMot2.setDriveMode(false, false, false);
+    // jointMot2.setDriveMode(false, false, false);
+    HAL_Delay(10U);
 
     jointMot1L.setOperatingMode(4U);
     jointMot1R.setOperatingMode(4U);
-    jointMot2.setOperatingMode(4U);
+    // jointMot2.setOperatingMode(4U);
     HAL_Delay(10U);
 
     jointMot1L.setProfileVelocity(ARM_PROFILE_VELOCITY);
     jointMot1L.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
     jointMot1R.setProfileVelocity(ARM_PROFILE_VELOCITY);
     jointMot1R.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    jointMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    jointMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    HAL_Delay(10U);
-
-    int32_t cur_1LR[2];
-    int32_t cur_2;
-    bool ok = jointDxl.getPresentPosition(cur_1LR) == 0 && jointMot2.getPresentPosition(cur_2) == 0;
-
-    if (!ok)
-    {
-        LOG_WARN("[JOINT_INIT] Position read failed — torque not enabled\n");
-        return;
-    }
-
-    jointDxl.setGoalPositionEpcm(cur_1LR);
-    jointMot2.setGoalPositionEpcm(cur_2);
+    // jointMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
+    // jointMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
     HAL_Delay(10U);
 
     // Enable torque
     jointMot1L.setTorqueEnable(true);
     jointMot1R.setTorqueEnable(true);
-    jointMot2.setTorqueEnable(true);
+    // jointMot2.setTorqueEnable(true);
+    HAL_Delay(10U);
+
+    int32_t cur_1LR[2];
+    // int32_t cur_2;
+    // jointMot2 commented out since no roll motor on the joint module is installed yet
+    bool ok = jointDxl.getPresentPosition(cur_1LR) == 0; // && jointMot2.getPresentPosition(cur_2) == 0;
+    HAL_Delay(10U);
+    
+#ifdef DEBUG
+    if (!ok)
+        LOG_WARN("[JOINT_INIT] Position read failed\n");
+#endif
+
+    jointDxl.setGoalPositionEpcm(cur_1LR);
+    // jointMot2.setGoalPositionEpcm(cur_2);
+    HAL_Delay(10U);
 
     // Initialize starting home positions
     if (ok) 
     {
         jointPos0Mot1Lr[0] = cur_1LR[0];
         jointPos0Mot1Lr[1] = cur_1LR[1];
-        jointPos0Mot2 = cur_2;
+        // jointPos0Mot2 = cur_2;
+    }
+    else
+    {
+        LOG_WARN("[JOINT_INIT] Failed to read current positions, using zero\n");
+        jointPos0Mot1Lr[0] = 0;
+        jointPos0Mot1Lr[1] = 0;
+        // jointPos0Mot2 = 0;
     }
     
     LOG_INFO("[JOINT_INIT] Joint DXL initialised\n");
