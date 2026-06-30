@@ -322,8 +322,8 @@ const CMDS_JOINT = [
 const CMD_INFO = {
   traction:    { desc: 'Set traction motor speeds. Positive = forward, negative = reverse. Typical range: -200 to 200 RPM.',
                  lbl1: 'Left RPM', lbl2: 'Right RPM', inputs: 2, step: 5 },
-  arm_1a1b:   { desc: 'Set arm J1 differential shoulder joint. Theta controls yaw, phi controls pitch.',
-                 lbl1: 'Theta / Yaw (rad)', lbl2: 'Phi / Pitch (rad)', inputs: 2, step: 0.05 },
+  arm_1a1b:   { desc: 'Set arm J1 differential shoulder joint. Theta controls pitch, phi controls yaw.',
+                 lbl1: 'Theta / Pitch (rad)', lbl2: 'Phi / Yaw (rad)', inputs: 2, step: 0.05 },
   arm_j2:     { desc: 'Set arm elbow pitch (J2, Dynamixel XM540).',
                  lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
   arm_j3:     { desc: 'Set arm forearm roll (J3, Dynamixel XM540).',
