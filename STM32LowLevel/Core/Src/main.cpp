@@ -1159,8 +1159,8 @@ static void sendFeedback(void)
     // Velocity feedback (RPM → rad/s), same differential convention as position
     float vel1a1b[2] = {0.0f, 0.0f};
     armDxl.getPresentVelocityRpm(vel1a1b);
-    float armPhiVel = -(vel1a1b[0] + vel1a1b[1]) * RPM_TO_RADS;
-    float armThetaVel = (vel1a1b[0] - vel1a1b[1]) * RPM_TO_RADS;
+    float armPhiVel = -((vel1a1b[0] + vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
+    float armThetaVel = ((vel1a1b[0] - vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
     float arm1a1bVel[2] = {armThetaVel, armPhiVel};
     canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK_VEL, arm1a1bVel, 8U);
 
