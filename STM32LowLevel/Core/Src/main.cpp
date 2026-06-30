@@ -1089,11 +1089,14 @@ static void DXL_JOINT_INIT(void)
     jointMot1R.setTorqueEnable(true);
     jointMot2.setTorqueEnable(true);
 
-    // Reset home positions to zero
-    jointPos0Mot1Lr[0] = 0;
-    jointPos0Mot1Lr[1] = 0;
-    jointPos0Mot2 = 0;
-
+    // Initialize starting home positions
+    if (ok) 
+    {
+        jointPos0Mot1Lr[0] = cur_1LR[0];
+        jointPos0Mot1Lr[1] = cur_1LR[1];
+        jointPos0Mot2 = cur_2;
+    }
+    
     LOG_INFO("[JOINT_INIT] Joint DXL initialised\n");
 }
 #endif // MODC_JOINT
