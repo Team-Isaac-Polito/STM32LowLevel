@@ -84,8 +84,8 @@
 #define ARM_DEFAULT_HOME      {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6
 
 // Cable roll configuration (MOD3)
-#define CABLE_ROL_PROFILE_VELOCITY     500  ///< Profile velocity (DXL units)
-#define CABLE_ROL_PROFILE_ACCELERATION 200   ///< Profile acceleration (DXL units)
+#define CABLE_ROL_PROFILE_VELOCITY     2048  ///< Profile velocity (DXL units) - max for fast response
+#define CABLE_ROL_PROFILE_ACCELERATION 700   ///< Profile acceleration (DXL units) - LOW for sharp response (motor chases moving goal)
 #define CABLE_ROL_DEADZONE             5    ///< Deadzone for position commands (DXL units)
 #define CABLE_ROL_RAD_TO_DXL           (4096.0f / (2.0f * 3.14159265f))  ///< Radians to DXL position units
 #define CABLE_ROL_DEFAULT_HOME         0.0f   ///< Default home = fully wound (cable shortest, 0 rad)
@@ -98,11 +98,14 @@
 // - Load within target ± deadzone → HOLD (healthy tension achieved)
 // Primary use: protect ethernet cable when operator pulls (release).
 // Secondary: retract cautiously when robot approaches operator (cable slack).
-#define CABLE_ROL_CTRL_MS                10    ///< Control loop interval (ms) — 100 Hz
-#define CABLE_ROL_TARGET_LOAD            10    ///< Target load (~40 mA) — small healthy tension to maintain
-#define CABLE_ROL_LOAD_DEADZONE          5     ///< Wide deadzone around target load — reduce oscillation
-#define CABLE_ROL_RELEASE_STEP           100    ///< Goal position step per cycle when releasing (faster pay out)
-#define CABLE_ROL_RETRACT_STEP           100    ///< Goal position step per cycle when retracting (cautious)
+#define CABLE_ROL_CTRL_MS                20    ///< Control loop interval (ms) — 100 Hz
+#define CABLE_ROL_TARGET_LOAD            11.25    ///< Target load (~40 mA) — small healthy tension to maintain
+#define CABLE_ROL_LOAD_DEADZONE          1.25     ///< Wide deadzone around target load — reduce oscillation
+#define CABLE_ROL_RELEASE_STEP           150    ///< Goal position step per cycle when releasing (faster pay out)
+#define CABLE_ROL_RETRACT_STEP           80     ///< Goal position step per cycle when retracting (cautious)
+#define CABLE_ROL_BREAKAWAY_THRESHOLD    0.5      ///< Load delta from target to trigger breakaway (lower than deadzone)
+#define CABLE_ROL_RETRACT_BREAKAWAY_THRESHOLD 25  ///< Higher threshold to exit retract mode (harder to go into hold when retracting)
+#define CABLE_ROL_HOLD_MIN_MS            100      ///< Min time in hold before breakaway allowed (ms)
 
 // Flash storage for home positions (STM32G474, 512 KB Flash with dual bank)
 #define HOME_FLASH_PAGE_ADDR    0x0807F800UL  ///< Start address of last Flash page (Bank 2, page 127)
