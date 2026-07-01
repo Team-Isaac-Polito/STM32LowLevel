@@ -1357,8 +1357,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         {
             float val;
             memcpy(&val, msgData, 4);
-            // J5 is mounted inverted — negate offset
-            armPosMot5 = armPos0Mot5 - (int32_t)(val * RAD_TO_DXL);
+            armPosMot5 = armPos0Mot5 + (int32_t)(val * RAD_TO_DXL);
             if (abs(armPosMot5 - armOldPosMot5) > ARM_DE_CAN_DXL)
             {
                 armMot5.setGoalPositionEpcm(armPosMot5);
