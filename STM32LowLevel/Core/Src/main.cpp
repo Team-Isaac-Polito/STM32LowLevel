@@ -185,6 +185,17 @@ static bool cableRolActive = false;    ///< True when cable roll has been initia
 // Active compliance state
 static uint32_t cableRolCtrlMs = 0U;   ///< Timestamp of last control step
 static bool cableRolCompliance = false; ///< True when active compliance is enabled
+
+// EMA filter for present load (current) readings - reduces noise from register 126
+static float cableRolLoadFiltered = 0.0f;  ///< EMA-filtered load value
+static constexpr float CABLE_ROL_LOAD_EMA_ALPHA = 0.1f;  ///< EMA smoothing factor (0.3 = ~3 samples time constant, balanced)
+static bool cableRolLoadFilterInitialized = false; ///< First-sample flag
+
+// Breakaway detection: makes it easy to INITIATE pull from steady hold
+static bool cableRolInHold = false;           ///< True when load is within deadzone (holding)
+static uint32_t cableRolHoldStartMs = 0U;     ///< Timestamp when hold started
+static bool cableRolInRetract = false;        ///< True when actively retracting (load < target - deadzone)
+static uint32_t cableRolRetractStartMs = 0U;  ///< Timestamp when retract started
 #endif
 
 /* USER CODE END PV */
@@ -1188,6 +1199,12 @@ static void DXL_CABLE_ROL_INIT(void)
     cableRolActive = true;
     cableRolCtrlMs = HAL_GetTick();
     cableRolCompliance = true;
+    cableRolLoadFiltered = 0.0f;  // Initialize EMA filter
+    cableRolLoadFilterInitialized = false;  // Reset EMA filter state
+    cableRolInHold = false;  // Reset breakaway state
+    cableRolHoldStartMs = 0U;
+    cableRolInRetract = false;  // Reset retract state
+    cableRolRetractStartMs = 0U;
 
     LOG_INFO("[CABLE_ROL_INIT] Cable roll DXL initialised (home=current=%d, NOT moving)\n", curPos);
 }
@@ -1226,11 +1243,24 @@ static void tickCableRolCompliance(uint32_t now)
     cableRolCtrlMs = now;
 
     // Read present load (signed: + = pull OUT, - = push IN / slack) and actual position
-    int16_t presentLoad = 0;
-    cableRolMotor.getCurrentLoad(presentLoad);
+    int16_t presentLoadRaw = 0;
+    cableRolMotor.getCurrentLoad(presentLoadRaw);
 
     int32_t actualPos = 0;
     cableRolMotor.getPresentPosition(actualPos);
+
+    // EMA filter on load reading to reduce noise (register 126 is inherently noisy)
+    if (!cableRolLoadFilterInitialized)
+    {
+        cableRolLoadFiltered = static_cast<float>(presentLoadRaw);
+        cableRolLoadFilterInitialized = true;
+    }
+    else
+    {
+        cableRolLoadFiltered = CABLE_ROL_LOAD_EMA_ALPHA * static_cast<float>(presentLoadRaw) +
+                               (1.0f - CABLE_ROL_LOAD_EMA_ALPHA) * cableRolLoadFiltered;
+    }
+    int16_t presentLoad = static_cast<int16_t>(cableRolLoadFiltered + 0.5f); // rounded
 
     // Proportional control around target load:
     // error = presentLoad - TARGET_LOAD
@@ -1240,10 +1270,61 @@ static void tickCableRolCompliance(uint32_t now)
     int16_t loadError = presentLoad - CABLE_ROL_TARGET_LOAD;
     int32_t adjustment = 0;
 
-    if (abs(loadError) > CABLE_ROL_LOAD_DEADZONE)
+    // Breakaway detection for HOLD -> RELEASE (pulling out)
+    bool breakawayRelease = false;
+    // Breakaway detection for RETRACT -> HOLD (harder to stop retracting)
+    bool breakawayRetract = false;
+
+    if (abs(loadError) <= CABLE_ROL_LOAD_DEADZONE)
+    {
+        // Within deadzone - we're holding
+        if (!cableRolInHold)
+        {
+            cableRolInHold = true;
+            cableRolHoldStartMs = now;
+        }
+        cableRolInRetract = false;  // Reset retract state when in hold
+    }
+    else if (loadError > CABLE_ROL_LOAD_DEADZONE)
+    {
+        // Load > target + deadzone: RELEASE (pay out)
+        if (cableRolInHold && (now - cableRolHoldStartMs >= CABLE_ROL_HOLD_MIN_MS))
+        {
+            // Was holding steady, now load increased significantly - intentional pull
+            if (abs(loadError) >= CABLE_ROL_BREAKAWAY_THRESHOLD)
+            {
+                breakawayRelease = true;
+            }
+        }
+        cableRolInHold = false;
+        cableRolInRetract = false;
+    }
+    else // loadError < -CABLE_ROL_LOAD_DEADZONE
+    {
+        // Load < target - deadzone: RETRACT (pull in)
+        if (!cableRolInRetract)
+        {
+            cableRolInRetract = true;
+            cableRolRetractStartMs = now;
+        }
+        // Breakaway detection for RETRACT -> HOLD (harder to stop retracting)
+        if (cableRolInRetract && (now - cableRolRetractStartMs >= CABLE_ROL_HOLD_MIN_MS))
+        {
+            // Was retracting, now load changed - check if should stop retracting
+            // Higher threshold makes it harder to exit retract mode
+            if (abs(loadError) <= CABLE_ROL_RETRACT_BREAKAWAY_THRESHOLD)
+            {
+                breakawayRetract = true;
+            }
+        }
+        cableRolInHold = false;
+    }
+
+    // Apply control: normal deadzone logic OR breakaway (for both RELEASE and RETRACT)
+    if (breakawayRelease || breakawayRetract || (abs(loadError) > CABLE_ROL_LOAD_DEADZONE))
     {
         // Proportional gain: ~0.5 step per load unit
-        int32_t propAdjustment = -(loadError * 2);  // negative: +load → -goal (pay out)
+        int32_t propAdjustment = -loadError;  // negative: +load → -goal (pay out)
 
         // Clamp to max step sizes
         if (propAdjustment > 0)
@@ -1268,7 +1349,7 @@ static void tickCableRolCompliance(uint32_t now)
             adjustment = propAdjustment;
         }
     }
-    // else: within deadzone — hold position (healthy tension achieved)
+    // else: within deadzone and no breakaway — hold position (healthy tension achieved)
 
     // Apply adjustment to goal position
     int32_t newPos = cableRolPos + adjustment;
@@ -1279,8 +1360,9 @@ static void tickCableRolCompliance(uint32_t now)
         cableRolPos = newPos;
         cableRolMotor.setGoalPositionEpcm(cableRolPos);
         cableRolOldPos = cableRolPos;
-        LOG_DEBUG("[CableRol] Compliance: load=%d err=%d adj=%d goal=%d actual=%d\n",
-                  presentLoad, loadError, adjustment, cableRolPos, actualPos);
+        LOG_DEBUG("[CableRol] Compliance: load=%d err=%d adj=%d goal=%d actual=%d hold=%d breakR=%d breakRet=%d\n",
+                  presentLoad, loadError, adjustment, cableRolPos, actualPos,
+                  cableRolInHold ? 1 : 0, breakawayRelease ? 1 : 0, breakawayRetract ? 1 : 0);
     }
 
     // Safety: check hardware error every 10th tick to reduce bus traffic
@@ -1449,8 +1531,8 @@ static void sendFeedback(void)
         float cableRolPosRad = (float)(cableRolPosFb - cableRolPos0) * DXL_TO_RAD;
         canW.sendMessage(CABLE_ROL_FEEDBACK, &cableRolPosRad, 4U);
 
-        int16_t cableRolCurrent = 0;
-        cableRolMotor.getCurrentLoad(cableRolCurrent);
+        // Use EMA-filtered load for telemetry (same as compliance loop)
+        int16_t cableRolCurrent = static_cast<int16_t>(cableRolLoadFiltered + 0.5f);
         canW.sendMessage(CABLE_ROL_LOAD_FEEDBACK, &cableRolCurrent, 2U);
 
         LOG_DEBUG("[CableRol] Pos: %.2f rad (%d DXL) Cur: %d\n", cableRolPosRad, cableRolPosFb, cableRolCurrent);
@@ -1679,6 +1761,12 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             cableRolPos = curPos;
             cableRolOldPos = curPos;
             cableRolMotor.setGoalPositionEpcm(curPos);
+            cableRolLoadFiltered = 0.0f;  // Reset EMA filter on home change
+            cableRolLoadFilterInitialized = false;  // Reset EMA filter state
+            cableRolInHold = false;  // Reset breakaway state
+            cableRolHoldStartMs = 0U;
+            cableRolInRetract = false;  // Reset retract state
+            cableRolRetractStartMs = 0U;
 
             if (msgData[0] == 1U)
             {
