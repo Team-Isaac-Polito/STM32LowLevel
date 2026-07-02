@@ -100,20 +100,20 @@ def test_arm_init(sender: CanSender) -> None:
 
 def test_arm_joints(
     sender: CanSender,
-    amplitude: float = 0.2,
+    velocity: float = 0.2,
     duration: float = 2.0,
 ) -> None:
-    """Move each arm joint individually by a small amount.
+    """Move each arm joint individually at a small velocity.
 
     Args:
         sender: CanSender instance.
-        amplitude: Angle in radians to move each joint.
+        velocity: Velocity in rad/s to move each joint.
         duration: Seconds to wait between movements.
     """
-    print(f"=== Arm joint test (amplitude={amplitude} rad) ===")
+    print(f"=== Arm joint test (velocity={velocity} rad/s) ===")
 
     joints = [
-        ("J1 (pitch 1a1b)", lambda a: sender.arm_pitch_1a1b(a, 0.0)),
+        ("J1 (pitch 1a1b)", lambda v: sender.arm_pitch_1a1b(v, 0.0)),
         ("J2 (elbow pitch)", sender.arm_pitch_j2),
         ("J3 (roll)", sender.arm_roll_j3),
         ("J4 (wrist pitch)", sender.arm_pitch_j4),
@@ -121,11 +121,11 @@ def test_arm_joints(
     ]
 
     for name, cmd in joints:
-        print(f"  Moving {name} to +{amplitude} rad...")
-        cmd(amplitude)
+        print(f"  Moving {name} at +{velocity} rad/s...")
+        cmd(velocity)
         time.sleep(duration)
 
-        print(f"  Moving {name} to 0 rad...")
+        print(f"  Stopping {name}...")
         cmd(0.0)
         time.sleep(duration)
 

@@ -73,12 +73,13 @@
 #define BEAK_HOLD_MAX_PWM      500    ///< Maximum hold PWM (prevents overheating)
 #define BEAK_HOLD_CTRL_MS      50     ///< Control loop interval (ms)
 
-// Arm motion profile (shared across all arm joints)
-#define ARM_PROFILE_VELOCITY      20   ///< Dynamixel profile velocity (DXL units)
-#define ARM_PROFILE_ACCELERATION  10   ///< Dynamixel profile acceleration (DXL units)
-#define ARM_DE_CAN_DXL            10   ///< Deadband: ignore cmd changes smaller than this (DXL units)
+// Arm velocity control constants (J1a, J1b, J2, J3, J4, J5
+#define ARM_VELOCITY_MAX        20   ///< Maximum velocity (DXL units) for arm joints 1-5
+#define ARM_VELOCITY_DEADBAND   10   ///< Deadband: ignore cmd changes smaller than this (DXL units)
+#define ARM_VELOCITY_KP         0.5f ///< Proportional gain: velocity = KP * position_error
+#define ARM_VELOCITY_KD         0.1f ///< Derivative gain for smooth differential control
 
-// Default arm home positions (DXL extended-position units)
+// Default arm home positions (DXL extended-position units) — used for initial positioning
 // Hardcoded values used at startup and overridden by valid Flash-stored values.
 #define ARM_HOME_NUM_MOTORS   7                                        ///< Number of arm motors (including beak/gripper)
 #define ARM_DEFAULT_HOME      {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6

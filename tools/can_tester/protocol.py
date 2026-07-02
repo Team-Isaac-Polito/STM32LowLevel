@@ -176,16 +176,16 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
     MsgType.JOINT_PITCH_FEEDBACK: PayloadFormat("<f", ["pitch"], "rad"),
     MsgType.JOINT_ROLL_FEEDBACK: PayloadFormat("<f", ["roll"], "rad"),
 
-    # Arm position setpoints / feedback
-    MsgType.ARM_PITCH_1a1b_SETPOINT: PayloadFormat("<ff", ["theta", "phi"], "rad"),
+    # Arm velocity setpoints / feedback (J1a, J1b, J2, J3, J4, J5 = velocity control, J6 beak = position control)
+    MsgType.ARM_PITCH_1a1b_SETPOINT: PayloadFormat("<ff", ["theta_vel", "phi_vel"], "rad/s"),
     MsgType.ARM_PITCH_1a1b_FEEDBACK: PayloadFormat("<ff", ["theta", "phi"], "rad"),
-    MsgType.ARM_PITCH_2_SETPOINT: PayloadFormat("<f", ["angle"], "rad"),
+    MsgType.ARM_PITCH_2_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
     MsgType.ARM_PITCH_2_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_ROLL_3_SETPOINT: PayloadFormat("<f", ["angle"], "rad"),
+    MsgType.ARM_ROLL_3_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
     MsgType.ARM_ROLL_3_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_PITCH_4_SETPOINT: PayloadFormat("<f", ["angle"], "rad"),
+    MsgType.ARM_PITCH_4_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
     MsgType.ARM_PITCH_4_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_ROLL_5_SETPOINT: PayloadFormat("<f", ["angle"], "rad"),
+    MsgType.ARM_ROLL_5_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
     MsgType.ARM_ROLL_5_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
     MsgType.ARM_ROLL_6_SETPOINT: PayloadFormat("<i", ["command"], "0=close(PWM-limited hold),1=open"),
     MsgType.ARM_ROLL_6_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),

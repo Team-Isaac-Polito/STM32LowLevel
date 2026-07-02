@@ -43,20 +43,21 @@ within ±10%.
 ## Procedure 2: Verify Robotic Arm (MOD1 Only)
 
 **Purpose**: Confirm all 6 arm joints + beak respond correctly.
+**Note**: J1a, J1b, J2, J3, J4, J5 use **VELOCITY CONTROL** (rad/s), J6 beak uses **POSITION CONTROL** (rad).
 
 > **Safety**: Ensure the arm is free to move. Keep hands clear. Start with
-> small angles.
+> small velocities.
 
 1. Start dashboard, select **MK2_MOD1**.
-2. Send **Reset Arm** — arm should move to home position.
+2. Send **Reset Arm** — arm should move to home position via velocity control.
 3. Monitor `ARM_*_FEEDBACK` messages to confirm positions near zero.
-4. Test each joint individually:
-   - **Arm J1 (1a1b)**: Theta = `0.1`, Phi = `0.0` → shoulder should yaw slightly.
-   - **Arm J2**: Angle = `0.2` → elbow should bend slightly.
-   - **Arm J3**: Angle = `0.1` → forearm should rotate slightly.
-   - **Arm J4**: Angle = `0.1` → wrist should pitch slightly.
-   - **Arm J5**: Angle = `0.1` → wrist should rotate slightly.
-5. Send **Beak Close**, then **Beak Open** — gripper should actuate.
+4. Test each joint individually (use small velocity values):
+   - **Arm J1 (1a1b)**: Theta Vel = `0.1`, Phi Vel = `0.0` → shoulder should yaw slightly.
+   - **Arm J2**: Velocity = `0.2` → elbow should bend slightly.
+   - **Arm J3**: Velocity = `0.1` → forearm should rotate slightly.
+   - **Arm J4**: Velocity = `0.1` → wrist should pitch slightly.
+   - **Arm J5**: Velocity = `0.1` → wrist should rotate slightly.
+5. Send **Beak Close**, then **Beak Open** — gripper should actuate (position control).
 6. Send **Reset Arm** to return to home.
 7. Check `MOTOR_ARM_ERROR_STATUS` — all 7 bytes should be `0`.
 
