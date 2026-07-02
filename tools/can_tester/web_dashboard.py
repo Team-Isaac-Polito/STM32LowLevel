@@ -257,6 +257,7 @@ let filterModules = new Set(); // empty = all modules
 let filterCanIds = []; // empty = all CAN IDs
 const feed = document.getElementById('feed');
 const maxLines = 200;
+const bufferLines = 5000;  // Larger buffer for filtered views of slow data
 const stats = {};
 const latestValues = {};
 let autoScroll = true;
@@ -650,7 +651,8 @@ setInterval(() => {
     for (const d of msgBuffer) {
       allMessages.push(d);
     }
-    while (allMessages.length > maxLines) allMessages.shift();
+    // Keep larger buffer for filtering, but limit DOM elements
+    while (allMessages.length > bufferLines) allMessages.shift();
     renderFilteredFeed();
   }
   msgBuffer = [];
