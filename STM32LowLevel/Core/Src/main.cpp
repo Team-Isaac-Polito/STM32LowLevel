@@ -54,7 +54,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-// Beak gripper state (MODC_ARM only).
+// Beak gripper state (MODC_ARM only)
 enum class BeakState : uint8_t
 {
     IDLE,     ///< No active command, motor at last known position
@@ -832,34 +832,28 @@ static void dxlArmInit(void)
     armMot4.setDriveMode(false, false, false);
     armMot5.setDriveMode(false, false, false);
     armMot6.setDriveMode(false, false, false);
+    HAL_Delay(10U);
 
-    // Operating mode 4 = Extended Position Control Mode
-    armDxl.setOperatingMode(4U);
-    armMot2.setOperatingMode(4U);
-    armMot3.setOperatingMode(4U);
-    armMot4.setOperatingMode(4U);
-    armMot5.setOperatingMode(4U);
+    // Operating mode: J1a, J1b, J2, J3, J4, J5 = velocity control (mode 1)
+    // J6 (beak) remains in extended position control (mode 4)
+    armDxl.setOperatingMode(1U);
+    armMot2.setOperatingMode(1U);
+    armMot3.setOperatingMode(1U);
+    armMot4.setOperatingMode(1U);
+    armMot5.setOperatingMode(1U);
     armMot6.setOperatingMode(4U);
     HAL_Delay(10U);
 
-    // Smooth motion profiles
-    armMot1a.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot1a.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot1b.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot1b.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot3.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot3.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot4.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot4.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot5.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot5.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot6.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    // Velocity profile: 0 = instant response (no acceleration ramping)
+    armMot1a.setProfileAcceleration(0U);
+    armMot1b.setProfileAcceleration(0U);
+    armMot2.setProfileAcceleration(0U);
+    armMot3.setProfileAcceleration(0U);
+    armMot4.setProfileAcceleration(0U);
+    armMot5.setProfileAcceleration(0U);
     HAL_Delay(10U);
 
-    // Read current positions before enabling torque to prevent violent startup motion
+    // Read current positions for reference (needed for velocity initialization)
     int32_t cur1Lr[2];
     int32_t cur2, cur3, cur4, cur5, cur6;
     bool ok = armDxl.getPresentPosition(cur1Lr) == 0 && armMot2.getPresentPosition(cur2) == 0 &&
@@ -872,16 +866,20 @@ static void dxlArmInit(void)
         return;
     }
 
-    // Pre-load goal = current so motors hold position when torque enables
-    armDxl.setGoalPositionEpcm(cur1Lr);
-    armMot2.setGoalPositionEpcm(cur2);
-    armMot3.setGoalPositionEpcm(cur3);
-    armMot4.setGoalPositionEpcm(cur4);
-    armMot5.setGoalPositionEpcm(cur5);
-    armMot6.setGoalPositionEpcm(cur6);
+    // Send zero velocity to all arm joints (J1a-J5) BEFORE enabling torque
+    // In velocity control mode, zero velocity = hold current position
+    {
+        float zeroVel1Lr[2] = {0.0f, 0.0f};
+        armDxl.setGoalVelocityRpm(zeroVel1Lr);
+    }
+    armMot2.setGoalVelocityRpm(0.0f);
+    armMot3.setGoalVelocityRpm(0.0f);
+    armMot4.setGoalVelocityRpm(0.0f);
+    armMot5.setGoalVelocityRpm(0.0f);
+    armMot6.setGoalPWM(0); // Beak in position mode needs zero PWM to hold
     HAL_Delay(10U);
 
-    // Enable torque — motors stay in place since goal ≈ current
+    // Enable torque — motors will hold current position via velocity control
     armMot1a.setTorqueEnable(true);
     armMot1b.setTorqueEnable(true);
     armMot2.setTorqueEnable(true);
@@ -890,7 +888,7 @@ static void dxlArmInit(void)
     armMot5.setTorqueEnable(true);
     armMot6.setTorqueEnable(true);
     HAL_Delay(10U);
-
+    
     // Load home positions — flash overrides compiled defaults
     armPos0Mot1Lr[0] = armDefaults[0];
     armPos0Mot1Lr[1] = armDefaults[1];
@@ -900,14 +898,10 @@ static void dxlArmInit(void)
     armPos0Mot5 = armDefaults[5];
     armPos0Mot6 = armDefaults[6];
     (void)loadHomePositions();
-
-    // Move to home position via profile velocity
-    armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
-    armMot2.setGoalPositionEpcm(armPos0Mot2);
-    armMot3.setGoalPositionEpcm(armPos0Mot3);
-    armMot4.setGoalPositionEpcm(armPos0Mot4);
-    armMot5.setGoalPositionEpcm(armPos0Mot5);
+    
+    // J6 (beak) uses position control - set to home position
     armMot6.setGoalPositionEpcm(armPos0Mot6);
+    
     LOG_INFO("[ARM_INIT] Arm DXL initialised — moving to home\n");
 }
 
@@ -1204,7 +1198,7 @@ static void sendFeedback(void)
     float vel1a1b[2] = {0.0f, 0.0f};
     armDxl.getPresentVelocityRpm(vel1a1b);
     float armPhiVel = -((vel1a1b[0] + vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
-    float armThetaVel = ((vel1a1b[0] - vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
+    float armThetaVel = -((vel1a1b[0] - vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
     float arm1a1bVel[2] = {armThetaVel, armPhiVel};
     canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK_VEL, arm1a1bVel, 8U);
 
@@ -1324,75 +1318,89 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             break;
         }
 
-#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only
+#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only (J1a, J1b, J2, J3, J4, J5 = velocity control, J6 beak = position control)
         case ARM_PITCH_1a1b_SETPOINT:
         {
-            float theta, phi;
-            memcpy(&theta, msgData, 4);
-            memcpy(&phi, msgData + 4, 4);
+            // High-level sends rad/s values directly for velocity control
+            float thetaVel, phiVel;
+            memcpy(&thetaVel, msgData, 4);
+            memcpy(&phiVel, msgData + 4, 4);
 
-            armPosMot1Lr[0] = (int32_t)(-(theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[0];
-            armPosMot1Lr[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[1];
+            // Convert rad/s to RPM for Dynamixel
+            // rad/s * (60 / 2π) = RPM
+            // multiply by -1 to account for differential convention (J1a/J1b)
+            float thetaRpm = -thetaVel / DXL_RPM_TO_RAD_S;
+            float phiRpm = -phiVel / DXL_RPM_TO_RAD_S;
 
-            if ((abs(armPosMot1Lr[0] - armOldPosMot1Lr[0]) > ARM_DE_CAN_DXL) ||
-                (abs(armPosMot1Lr[1] - armOldPosMot1Lr[1]) > ARM_DE_CAN_DXL))
-            {
-                armDxl.setGoalPositionEpcm(armPosMot1Lr);
-                armOldPosMot1Lr[0] = armPosMot1Lr[0];
-                armOldPosMot1Lr[1] = armPosMot1Lr[1];
-            }
+            // Differential kinematics: theta = (J1a - J1b)/2, phi = (J1a + J1b)/2
+            // So: J1a = phi + theta, J1b = phi - theta
+            float vel1a = phiRpm + thetaRpm;
+            float vel1b = phiRpm - thetaRpm;
+
+            // Clamp to max velocity
+            if (vel1a > ARM_VELOCITY_MAX) vel1a = ARM_VELOCITY_MAX;
+            else if (vel1a < -ARM_VELOCITY_MAX) vel1a = -ARM_VELOCITY_MAX;
+            if (vel1b > ARM_VELOCITY_MAX) vel1b = ARM_VELOCITY_MAX;
+            else if (vel1b < -ARM_VELOCITY_MAX) vel1b = -ARM_VELOCITY_MAX;
+
+            float vel1Lr[2] = {vel1a, vel1b};
+            armDxl.setGoalVelocityRpm(vel1Lr);
             break;
         }
 
         case ARM_PITCH_2_SETPOINT:
         {
+            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            armPosMot2 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot2;
-            if (abs(armPosMot2 - armOldPosMot2) > ARM_DE_CAN_DXL)
-            {
-                armMot2.setGoalPositionEpcm(armPosMot2);
-                armOldPosMot2 = armPosMot2;
-            }
+            // Convert rad/s to RPM
+            float rpm = val / DXL_RPM_TO_RAD_S;
+            // Clamp to max velocity
+            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
+            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
+            armMot2.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_ROLL_3_SETPOINT:
         {
+            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            armPosMot3 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot3;
-            if (abs(armPosMot3 - armOldPosMot3) > ARM_DE_CAN_DXL)
-            {
-                armMot3.setGoalPositionEpcm(armPosMot3);
-                armOldPosMot3 = armPosMot3;
-            }
+            // Convert rad/s to RPM
+            float rpm = val / DXL_RPM_TO_RAD_S;
+            // Clamp to max velocity
+            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
+            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
+            armMot3.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_PITCH_4_SETPOINT:
         {
+            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            armPosMot4 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot4;
-            if (abs(armPosMot4 - armOldPosMot4) > ARM_DE_CAN_DXL)
-            {
-                armMot4.setGoalPositionEpcm(armPosMot4);
-                armOldPosMot4 = armPosMot4;
-            }
+            // Convert rad/s to RPM
+            float rpm = val / DXL_RPM_TO_RAD_S;
+            // Clamp to max velocity
+            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
+            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
+            armMot4.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_ROLL_5_SETPOINT:
         {
+            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            armPosMot5 = armPos0Mot5 + (int32_t)(val * RAD_TO_DXL);
-            if (abs(armPosMot5 - armOldPosMot5) > ARM_DE_CAN_DXL)
-            {
-                armMot5.setGoalPositionEpcm(armPosMot5);
-                armOldPosMot5 = armPosMot5;
-            }
+            // Convert rad/s to RPM
+            float rpm = val / DXL_RPM_TO_RAD_S;
+            // Clamp to max velocity
+            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
+            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
+            armMot5.setGoalVelocityRpm(rpm);
             break;
         }
 
@@ -1430,14 +1438,48 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
         case RESET_ARM:
         {
-            // Move all joints to home position
-            armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
-            armMot2.setGoalPositionEpcm(armPos0Mot2);
-            armMot3.setGoalPositionEpcm(armPos0Mot3);
-            armMot4.setGoalPositionEpcm(armPos0Mot4);
-            armMot5.setGoalPositionEpcm(armPos0Mot5);
+            // Move all joints to home position using velocity control for J1a-J5, position for J6
+            int32_t cur1Lr[2], cur2, cur3, cur4, cur5;
+            armDxl.getPresentPosition(cur1Lr);
+            armMot2.getPresentPosition(cur2);
+            armMot3.getPresentPosition(cur3);
+            armMot4.getPresentPosition(cur4);
+            armMot5.getPresentPosition(cur5);
+            
+            // Calculate and send velocities for J1a-J5 using proportional control
+            // Position error: difference between home and current position
+            float err1Lr[2] = {(float)(armPos0Mot1Lr[0] - cur1Lr[0]), (float)(armPos0Mot1Lr[1] - cur1Lr[1])};
+            float vel1Lr[2] = {err1Lr[0] * ARM_VELOCITY_KP, err1Lr[1] * ARM_VELOCITY_KP};
+            if (vel1Lr[0] > ARM_VELOCITY_MAX) vel1Lr[0] = ARM_VELOCITY_MAX;
+            else if (vel1Lr[0] < -ARM_VELOCITY_MAX) vel1Lr[0] = -ARM_VELOCITY_MAX;
+            if (vel1Lr[1] > ARM_VELOCITY_MAX) vel1Lr[1] = ARM_VELOCITY_MAX;
+            else if (vel1Lr[1] < -ARM_VELOCITY_MAX) vel1Lr[1] = -ARM_VELOCITY_MAX;
+            armDxl.setGoalVelocityRpm(vel1Lr);
+            
+            float vel2 = ((float)(armPos0Mot2 - cur2)) * ARM_VELOCITY_KP;
+            if (vel2 > ARM_VELOCITY_MAX) vel2 = ARM_VELOCITY_MAX;
+            else if (vel2 < -ARM_VELOCITY_MAX) vel2 = -ARM_VELOCITY_MAX;
+            armMot2.setGoalVelocityRpm(vel2);
+            
+            float vel3 = ((float)(armPos0Mot3 - cur3)) * ARM_VELOCITY_KP;
+            if (vel3 > ARM_VELOCITY_MAX) vel3 = ARM_VELOCITY_MAX;
+            else if (vel3 < -ARM_VELOCITY_MAX) vel3 = -ARM_VELOCITY_MAX;
+            armMot3.setGoalVelocityRpm(vel3);
+            
+            float vel4 = ((float)(armPos0Mot4 - cur4)) * ARM_VELOCITY_KP;
+            if (vel4 > ARM_VELOCITY_MAX) vel4 = ARM_VELOCITY_MAX;
+            else if (vel4 < -ARM_VELOCITY_MAX) vel4 = -ARM_VELOCITY_MAX;
+            armMot4.setGoalVelocityRpm(vel4);
+            
+            float vel5 = ((float)(armPos0Mot5 - cur5)) * ARM_VELOCITY_KP;
+            if (vel5 > ARM_VELOCITY_MAX) vel5 = ARM_VELOCITY_MAX;
+            else if (vel5 < -ARM_VELOCITY_MAX) vel5 = -ARM_VELOCITY_MAX;
+            armMot5.setGoalVelocityRpm(vel5);
+            
+            // J6 (beak) uses position control
             armMot6.setGoalPWM(BEAK_FULL_PWM);
             armMot6.setGoalPositionEpcm(armPos0Mot6);
+            
             beakState = BeakState::IDLE;
             armOldPosMot1Lr[0] = armPos0Mot1Lr[0];
             armOldPosMot1Lr[1] = armPos0Mot1Lr[1];

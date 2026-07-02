@@ -35,17 +35,18 @@
 #define DATA_EE_HEAD_ROLL_FEEDBACK  0x46  ///< EE head roll  feedback     — Int, DXL units
 
 // Robotic arm — MK2 MOD1 only (0x5X)
-#define ARM_PITCH_1a1b_SETPOINT     0x51  ///< Arm J1a/J1b differential setpoint — Float×2, rad
+// J1a, J1b, J2, J3, J4, J5 = VELOCITY CONTROL (rad/s), J6 beak = POSITION CONTROL (rad)
+#define ARM_PITCH_1a1b_SETPOINT     0x51  ///< Arm J1a/J1b differential velocity — Float×2, rad/s
 #define ARM_PITCH_1a1b_FEEDBACK     0x52  ///< Arm J1a/J1b differential feedback — Float×2, rad
-#define ARM_PITCH_2_SETPOINT        0x53  ///< Arm J2 elbow pitch setpoint       — Float, rad
+#define ARM_PITCH_2_SETPOINT        0x53  ///< Arm J2 elbow pitch velocity       — Float, rad/s
 #define ARM_PITCH_2_FEEDBACK        0x54  ///< Arm J2 elbow pitch feedback       — Float, rad
-#define ARM_ROLL_3_SETPOINT         0x55  ///< Arm J3 wrist roll  setpoint       — Float, rad
-#define ARM_ROLL_3_FEEDBACK         0x56  ///< Arm J3 wrist roll  feedback       — Float, rad
-#define ARM_PITCH_4_SETPOINT        0x57  ///< Arm J4 wrist pitch setpoint       — Float, rad
+#define ARM_ROLL_3_SETPOINT         0x55  ///< Arm J3 wrist roll velocity        — Float, rad/s
+#define ARM_ROLL_3_FEEDBACK         0x56  ///< Arm J3 wrist roll feedback        — Float, rad
+#define ARM_PITCH_4_SETPOINT        0x57  ///< Arm J4 wrist pitch velocity       — Float, rad/s
 #define ARM_PITCH_4_FEEDBACK        0x58  ///< Arm J4 wrist pitch feedback       — Float, rad
-#define ARM_ROLL_5_SETPOINT         0x59  ///< Arm J5 wrist roll  setpoint       — Float, rad
-#define ARM_ROLL_5_FEEDBACK         0x5A  ///< Arm J5 wrist roll  feedback       — Float, rad
-#define ARM_ROLL_6_SETPOINT         0x5B  ///< Arm J6 beak  setpoint — Int32: 0=close, 1=open  
+#define ARM_ROLL_5_SETPOINT         0x59  ///< Arm J5 wrist roll velocity        — Float, rad/s
+#define ARM_ROLL_5_FEEDBACK         0x5A  ///< Arm J5 wrist roll feedback        — Float, rad
+#define ARM_ROLL_6_SETPOINT         0x5B  ///< Arm J6 beak  setpoint — Int32: 0=close, 1=open (position control)
 #define ARM_ROLL_6_FEEDBACK         0x5C  ///< Arm J6 beak  feedback — Float, rad
 #define RESET_ARM                   0x5D  ///< Move arm to calibrated home position (no payload)
 #define REBOOT_ARM                  0x5E  ///< Reboot all arm Dynamixel motors    (no payload)

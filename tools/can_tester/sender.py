@@ -78,25 +78,25 @@ class CanSender:
             left_rpm=left_rpm,
         )
 
-    def arm_pitch_1a1b(self, theta: float, phi: float) -> None:
-        """Set arm J1 differential pitch/yaw."""
-        self.send(MsgType.ARM_PITCH_1a1b_SETPOINT, theta=theta, phi=phi)
+    def arm_pitch_1a1b(self, theta_vel: float, phi_vel: float) -> None:
+        """Set arm J1 differential velocity (rad/s). J1a/J1b use velocity control."""
+        self.send(MsgType.ARM_PITCH_1a1b_SETPOINT, theta_vel=theta_vel, phi_vel=phi_vel)
 
-    def arm_pitch_j2(self, angle: float) -> None:
-        """Set arm elbow pitch J2."""
-        self.send(MsgType.ARM_PITCH_2_SETPOINT, angle=angle)
+    def arm_pitch_j2(self, velocity: float) -> None:
+        """Set arm elbow pitch J2 velocity (rad/s)."""
+        self.send(MsgType.ARM_PITCH_2_SETPOINT, velocity=velocity)
 
-    def arm_roll_j3(self, angle: float) -> None:
-        """Set arm roll J3."""
-        self.send(MsgType.ARM_ROLL_3_SETPOINT, angle=angle)
+    def arm_roll_j3(self, velocity: float) -> None:
+        """Set arm roll J3 velocity (rad/s)."""
+        self.send(MsgType.ARM_ROLL_3_SETPOINT, velocity=velocity)
 
-    def arm_pitch_j4(self, angle: float) -> None:
-        """Set arm wrist pitch J4."""
-        self.send(MsgType.ARM_PITCH_4_SETPOINT, angle=angle)
+    def arm_pitch_j4(self, velocity: float) -> None:
+        """Set arm wrist pitch J4 velocity (rad/s)."""
+        self.send(MsgType.ARM_PITCH_4_SETPOINT, velocity=velocity)
 
-    def arm_roll_j5(self, angle: float) -> None:
-        """Set arm wrist roll J5."""
-        self.send(MsgType.ARM_ROLL_5_SETPOINT, angle=angle)
+    def arm_roll_j5(self, velocity: float) -> None:
+        """Set arm wrist roll J5 velocity (rad/s)."""
+        self.send(MsgType.ARM_ROLL_5_SETPOINT, velocity=velocity)
 
     def arm_beak(self, close: bool) -> None:
         """Control beak gripper. close=True to close, False to open."""

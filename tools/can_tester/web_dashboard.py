@@ -282,15 +282,15 @@ const CMDS_ARM = [
   { group: 'Traction', items: [
     { val: 'traction', label: 'Traction Motors — Set wheel speeds' },
   ]},
-  { group: 'Robotic Arm (MOD1)', items: [
-    { val: 'arm_1a1b', label: 'Arm J1 (Differential Pitch) — Base shoulder pair' },
-    { val: 'arm_j2', label: 'Arm J2 (Elbow Pitch) — Single motor elbow' },
-    { val: 'arm_j3', label: 'Arm J3 (Roll) — Forearm rotation' },
-    { val: 'arm_j4', label: 'Arm J4 (Wrist Pitch) — Wrist up/down' },
-    { val: 'arm_j5', label: 'Arm J5 (Wrist Roll) — Wrist rotation' },
-    { val: 'beak_close', label: 'Beak Close — Gripper close' },
-    { val: 'beak_open', label: 'Beak Open — Gripper open' },
-    { val: 'reset_arm', label: 'Reset Arm — Move to home position' },
+  { group: 'Robotic Arm (MOD1) — J1-J5: velocity control, J6 beak: position control', items: [
+    { val: 'arm_1a1b', label: 'Arm J1 (Differential) — Base shoulder pair (vel rad/s)' },
+    { val: 'arm_j2', label: 'Arm J2 (Elbow) — Single motor elbow (vel rad/s)' },
+    { val: 'arm_j3', label: 'Arm J3 (Roll) — Forearm rotation (vel rad/s)' },
+    { val: 'arm_j4', label: 'Arm J4 (Wrist Pitch) — Wrist up/down (vel rad/s)' },
+    { val: 'arm_j5', label: 'Arm J5 (Wrist Roll) — Wrist rotation (vel rad/s)' },
+    { val: 'beak_close', label: 'Beak Close — Gripper close (position)' },
+    { val: 'beak_open', label: 'Beak Open — Gripper open (position)' },
+    { val: 'reset_arm', label: 'Reset Arm — Move to home (velocity mode)' },
     { val: 'reboot_arm', label: 'Reboot Arm — Restart Dynamixel motors' },
     { val: 'set_home', label: 'Set Home — Save current position as home' },
   ]},
@@ -323,19 +323,19 @@ const CMDS_JOINT = [
 const CMD_INFO = {
   traction:    { desc: 'Set traction motor speeds. Positive = forward, negative = reverse. Typical range: -200 to 200 RPM.',
                  lbl1: 'Left RPM', lbl2: 'Right RPM', inputs: 2, step: 5 },
-  arm_1a1b:   { desc: 'Set arm J1 differential shoulder joint. Theta controls pitch, phi controls yaw.',
-                 lbl1: 'Theta / Pitch (rad)', lbl2: 'Phi / Yaw (rad)', inputs: 2, step: 0.05 },
-  arm_j2:     { desc: 'Set arm elbow pitch (J2, Dynamixel XM540).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j3:     { desc: 'Set arm forearm roll (J3, Dynamixel XM540).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j4:     { desc: 'Set arm wrist pitch (J4, Dynamixel XL430).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j5:     { desc: 'Set arm wrist roll (J5, Dynamixel XL430).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  beak_close: { desc: 'Close the beak/gripper. No parameters needed — sends close command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
-  beak_open:  { desc: 'Open the beak/gripper. No parameters needed — sends open command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
-  reset_arm:  { desc: 'Move all arm joints to their home position. Reads current positions, then slowly returns to zero.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  arm_1a1b:   { desc: 'Set arm J1 differential shoulder joint velocity (rad/s). J1a/J1b use velocity control mode.',
+                 lbl1: 'Theta / Pitch Vel (rad/s)', lbl2: 'Phi / Yaw Vel (rad/s)', inputs: 2, step: 0.1 },
+  arm_j2:     { desc: 'Set arm elbow pitch J2 velocity (rad/s).',
+                 lbl1: 'Velocity (rad/s)', lbl2: '', inputs: 1, step: 0.1 },
+  arm_j3:     { desc: 'Set arm forearm roll J3 velocity (rad/s).',
+                 lbl1: 'Velocity (rad/s)', lbl2: '', inputs: 1, step: 0.1 },
+  arm_j4:     { desc: 'Set arm wrist pitch J4 velocity (rad/s).',
+                 lbl1: 'Velocity (rad/s)', lbl2: '', inputs: 1, step: 0.1 },
+  arm_j5:     { desc: 'Set arm wrist roll J5 velocity (rad/s).',
+                 lbl1: 'Velocity (rad/s)', lbl2: '', inputs: 1, step: 0.1 },
+  beak_close: { desc: 'Close the beak/gripper (position control). No parameters needed — sends close command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  beak_open:  { desc: 'Open the beak/gripper (position control). No parameters needed — sends open command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  reset_arm:  { desc: 'Move all arm joints to their home position via velocity control. J1-J5 use velocity, J6 beak uses position.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   reboot_arm: { desc: 'Reboot all arm Dynamixel motors via protocol command. Use when motors are in error state.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   set_home:   { desc: 'Set current arm position as new home. Check "Permanent" to persist across power cycles.', lbl1: '', lbl2: '', inputs: 0, step: 1, hasOptions: true },
   reboot_traction: { desc: 'Reboot traction DC motors. Sends a reboot command to the traction controller.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
@@ -434,9 +434,9 @@ function updateForm() {
   }
   // Show permanent checkbox for set_home
   document.getElementById('cmdOptions').style.display = info.hasOptions ? '' : 'none';
-  // Show relative mode for arm/joint angle commands
-  const isAngle = cmd.startsWith('arm_') || cmd.startsWith('joint_');
-  document.getElementById('relativeMode').style.display = (isAngle && info.inputs > 0) ? '' : 'none';
+  // Show relative mode for arm/joint velocity commands
+  const isVelocity = cmd.startsWith('arm_') || cmd.startsWith('joint_');
+  document.getElementById('relativeMode').style.display = (isVelocity && info.inputs > 0) ? '' : 'none';
   // Show torque quick-preset buttons
   const torquePresets = document.getElementById('torquePresets');
   if (torquePresets) torquePresets.style.display = (cmd === 'torque') ? '' : 'none';

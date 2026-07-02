@@ -9,13 +9,13 @@ Usage:
 
 Commands:
     send traction <left_rpm> <right_rpm>    Set traction motor speeds
-    send arm_j2 <angle_rad>                 Set arm elbow pitch
-    send arm_j3 <angle_rad>                 Set arm roll J3
-    send arm_j4 <angle_rad>                 Set arm wrist pitch
-    send arm_j5 <angle_rad>                 Set arm wrist roll
-    send arm_1a1b <theta> <phi>             Set arm differential J1
-    send beak open|close                    Control beak gripper
-    send reset_arm                          Move arm to home position
+    send arm_j2 <vel_rad/s>                 Set arm elbow pitch velocity (J2)
+    send arm_j3 <vel_rad/s>                 Set arm roll velocity (J3)
+    send arm_j4 <vel_rad/s>                 Set arm wrist pitch velocity (J4)
+    send arm_j5 <vel_rad/s>                 Set arm wrist roll velocity (J5)
+    send arm_1a1b <theta_vel> <phi_vel>     Set arm differential J1 velocity (rad/s)
+    send beak open|close                    Control beak gripper (position control)
+    send reset_arm                          Move arm to home position (velocity mode)
     send set_home [permanent]               Set current position as home (default: interim)
     send reboot_arm                         Reboot arm motors
     send reboot_traction                    Reboot traction motors

@@ -49,11 +49,11 @@ def main():
     assert abs(vals["left_rpm"] - (-50.0)) < 0.01, f"left_rpm mismatch: {vals}"
     print(f"  MOTOR_SETPOINT encode -> {data.hex()} -> {vals} OK")
 
-    # Test arm single float
-    data2 = encode_payload(MsgType.ARM_PITCH_2_SETPOINT, angle=1.5708)
+    # Test arm velocity (J1a-J5 use velocity control, J6 beak uses position)
+    data2 = encode_payload(MsgType.ARM_PITCH_2_SETPOINT, velocity=0.5)
     vals2 = decode_payload(MsgType.ARM_PITCH_2_SETPOINT, data2)
-    assert abs(vals2["angle"] - 1.5708) < 0.001, f"arm mismatch: {vals2}"
-    print(f"  ARM_PITCH_2_SETPOINT encode -> {data2.hex()} -> OK")
+    assert abs(vals2["velocity"] - 0.5) < 0.001, f"arm mismatch: {vals2}"
+    print(f"  ARM_PITCH_2_SETPOINT (velocity) encode -> {data2.hex()} -> OK")
 
     # Test no-payload messages
     data3 = encode_payload(MsgType.RESET_ARM)
@@ -108,11 +108,11 @@ def main():
     assert len(seq_funcs) >= 5, f"Expected >= 5 test functions, got {len(seq_funcs)}"
     print(f"  {len(seq_funcs)} test functions OK")
 
-    # 6. MsgType completeness — STM32LowLevel has 44 message types
+    # 6. MsgType completeness — STM32LowLevel has 46 message types (updated for velocity control)
     print(f"\n=== MsgType enum ===")
     msg_count = len(list(MsgType))
     print(f"  {msg_count} message types loaded")
-    assert msg_count == 44, f"Expected 44 message types, got {msg_count}"
+    assert msg_count == 46, f"Expected 46 message types, got {msg_count}"
 
     # Spot-check key entries
     assert MsgType.REBOOT_ARM == 0x5E
