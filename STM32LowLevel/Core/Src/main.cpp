@@ -143,19 +143,12 @@ static int32_t armPos0Mot4 = armDefaults[4];
 static int32_t armPos0Mot5 = armDefaults[5];
 static int32_t armPos0Mot6 = armDefaults[6];
 
-// Arm live setpoint state
-static int32_t armPosMot1Lr[2] = {0, 0};
-static int32_t armOldPosMot1Lr[2] = {0, 0};
-static int32_t armPosMot2 = 0, armOldPosMot2 = 0;
-static int32_t armPosMot3 = 0, armOldPosMot3 = 0;
-static int32_t armPosMot4 = 0, armOldPosMot4 = 0;
-static int32_t armPosMot5 = 0, armOldPosMot5 = 0;
-
 // Beak gripper state
 static BeakState beakState = BeakState::IDLE;
 static uint32_t beakMotionStartMs = 0U;
 static uint32_t beakTempCheckMs = 0U; ///< Timestamp of last thermal check in HOLDING
-#endif
+
+#endif // MODC_ARM
 
 #ifdef MODC_JOINT
 // Joint Dynamixel motors (USART2 bus)
@@ -193,6 +186,7 @@ static void dxlArmInit(void);
 static bool loadHomePositions(void);
 static bool saveHomePositions(void);
 static void tickBeakStateMachine(uint32_t now);
+static void homeArm(void);
 #endif
 #ifdef MODC_ARM
 static void ledHpInit(void);
@@ -901,8 +895,11 @@ static void dxlArmInit(void)
     
     // J6 (beak) uses position control - set to home position
     armMot6.setGoalPositionEpcm(armPos0Mot6);
-    
-    LOG_INFO("[ARM_INIT] Arm DXL initialised — moving to home\n");
+
+    // Home arm to calibrated positions
+    homeArm();
+
+    LOG_INFO("[ARM_INIT] Arm DXL initialised\n");
 }
 
 /**
@@ -1004,6 +1001,76 @@ static void tickBeakStateMachine(uint32_t now)
         }
     }
     // BeakState::IDLE — nothing to do
+}
+#endif // MODC_ARM
+
+#ifdef MODC_ARM
+/**
+ * Home the arm to calibrated positions.
+ * This is a blocking function that waits for homing to complete.
+ * Uses velocity control to move each joint toward its home position.
+ */
+static void homeArm(void)
+{
+    // Read current positions
+    int32_t cur1Lr[2], cur2, cur3, cur4, cur5;
+    if (armDxl.getPresentPosition(cur1Lr) != 0 ||
+        armMot2.getPresentPosition(cur2) != 0 ||
+        armMot3.getPresentPosition(cur3) != 0 ||
+        armMot4.getPresentPosition(cur4) != 0 ||
+        armMot5.getPresentPosition(cur5) != 0)
+    {
+        LOG_WARN("[ARM_HOME] Failed to read current positions\n");
+        return;
+    }
+
+    LOG_INFO("[ARM_HOME] Homing to target positions\n");
+
+    // Calculate velocities for each motor (rad/s → RPM conversion)
+    float vel1a = (armPos0Mot1Lr[0] - cur1Lr[0]) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+    float vel1b = (armPos0Mot1Lr[1] - cur1Lr[1]) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+    float vel2 = (armPos0Mot2 - cur2) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+    float vel3 = (armPos0Mot3 - cur3) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+    float vel4 = (armPos0Mot4 - cur4) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+    float vel5 = (armPos0Mot5 - cur5) * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S;
+
+    // Send velocities
+    float vel1Lr[2] = {vel1a, vel1b};
+    armDxl.setGoalVelocityRpm(vel1Lr);
+    armMot2.setGoalVelocityRpm(vel2);
+    armMot3.setGoalVelocityRpm(vel3);
+    armMot4.setGoalVelocityRpm(vel4);
+    armMot5.setGoalVelocityRpm(vel5);
+
+    // Wait for all motors to reach their targets
+    for (int attempt = 0; attempt < 500; attempt++) // ~5 second timeout
+    {
+        armDxl.getPresentPosition(cur1Lr);
+        armMot2.getPresentPosition(cur2);
+        armMot3.getPresentPosition(cur3);
+        armMot4.getPresentPosition(cur4);
+        armMot5.getPresentPosition(cur5);
+
+        if (abs(cur1Lr[0] - armPos0Mot1Lr[0]) <= ARM_HOME_POS_TOLERANCE &&
+            abs(cur1Lr[1] - armPos0Mot1Lr[1]) <= ARM_HOME_POS_TOLERANCE &&
+            abs(cur2 - armPos0Mot2) <= ARM_HOME_POS_TOLERANCE &&
+            abs(cur3 - armPos0Mot3) <= ARM_HOME_POS_TOLERANCE &&
+            abs(cur4 - armPos0Mot4) <= ARM_HOME_POS_TOLERANCE &&
+            abs(cur5 - armPos0Mot5) <= ARM_HOME_POS_TOLERANCE)
+        {
+            // Zero velocities
+            float zero[2] = {0.0f, 0.0f};
+            armDxl.setGoalVelocityRpm(zero);
+            armMot2.setGoalVelocityRpm(0.0f);
+            armMot3.setGoalVelocityRpm(0.0f);
+            armMot4.setGoalVelocityRpm(0.0f);
+            armMot5.setGoalVelocityRpm(0.0f);
+            LOG_INFO("[ARM_HOME] Homing complete\n");
+            return;
+        }
+        HAL_Delay(10U);
+    }
+    LOG_WARN("[ARM_HOME] Homing timeout\n");
 }
 #endif // MODC_ARM
 
@@ -1337,12 +1404,6 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             float vel1a = phiRpm + thetaRpm;
             float vel1b = phiRpm - thetaRpm;
 
-            // Clamp to max velocity
-            if (vel1a > ARM_VELOCITY_MAX) vel1a = ARM_VELOCITY_MAX;
-            else if (vel1a < -ARM_VELOCITY_MAX) vel1a = -ARM_VELOCITY_MAX;
-            if (vel1b > ARM_VELOCITY_MAX) vel1b = ARM_VELOCITY_MAX;
-            else if (vel1b < -ARM_VELOCITY_MAX) vel1b = -ARM_VELOCITY_MAX;
-
             float vel1Lr[2] = {vel1a, vel1b};
             armDxl.setGoalVelocityRpm(vel1Lr);
             break;
@@ -1350,56 +1411,36 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
         case ARM_PITCH_2_SETPOINT:
         {
-            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            // Convert rad/s to RPM
             float rpm = val / DXL_RPM_TO_RAD_S;
-            // Clamp to max velocity
-            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
-            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
             armMot2.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_ROLL_3_SETPOINT:
         {
-            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            // Convert rad/s to RPM
             float rpm = val / DXL_RPM_TO_RAD_S;
-            // Clamp to max velocity
-            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
-            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
             armMot3.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_PITCH_4_SETPOINT:
         {
-            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            // Convert rad/s to RPM
             float rpm = val / DXL_RPM_TO_RAD_S;
-            // Clamp to max velocity
-            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
-            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
             armMot4.setGoalVelocityRpm(rpm);
             break;
         }
 
         case ARM_ROLL_5_SETPOINT:
         {
-            // High-level sends rad/s directly for velocity control
             float val;
             memcpy(&val, msgData, 4);
-            // Convert rad/s to RPM
             float rpm = val / DXL_RPM_TO_RAD_S;
-            // Clamp to max velocity
-            if (rpm > ARM_VELOCITY_MAX) rpm = ARM_VELOCITY_MAX;
-            else if (rpm < -ARM_VELOCITY_MAX) rpm = -ARM_VELOCITY_MAX;
             armMot5.setGoalVelocityRpm(rpm);
             break;
         }
@@ -1438,56 +1479,9 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
         case RESET_ARM:
         {
-            // Move all joints to home position using velocity control for J1a-J5, position for J6
-            int32_t cur1Lr[2], cur2, cur3, cur4, cur5;
-            armDxl.getPresentPosition(cur1Lr);
-            armMot2.getPresentPosition(cur2);
-            armMot3.getPresentPosition(cur3);
-            armMot4.getPresentPosition(cur4);
-            armMot5.getPresentPosition(cur5);
-            
-            // Calculate and send velocities for J1a-J5 using proportional control
-            // Position error: difference between home and current position
-            float err1Lr[2] = {(float)(armPos0Mot1Lr[0] - cur1Lr[0]), (float)(armPos0Mot1Lr[1] - cur1Lr[1])};
-            float vel1Lr[2] = {err1Lr[0] * ARM_VELOCITY_KP, err1Lr[1] * ARM_VELOCITY_KP};
-            if (vel1Lr[0] > ARM_VELOCITY_MAX) vel1Lr[0] = ARM_VELOCITY_MAX;
-            else if (vel1Lr[0] < -ARM_VELOCITY_MAX) vel1Lr[0] = -ARM_VELOCITY_MAX;
-            if (vel1Lr[1] > ARM_VELOCITY_MAX) vel1Lr[1] = ARM_VELOCITY_MAX;
-            else if (vel1Lr[1] < -ARM_VELOCITY_MAX) vel1Lr[1] = -ARM_VELOCITY_MAX;
-            armDxl.setGoalVelocityRpm(vel1Lr);
-            
-            float vel2 = ((float)(armPos0Mot2 - cur2)) * ARM_VELOCITY_KP;
-            if (vel2 > ARM_VELOCITY_MAX) vel2 = ARM_VELOCITY_MAX;
-            else if (vel2 < -ARM_VELOCITY_MAX) vel2 = -ARM_VELOCITY_MAX;
-            armMot2.setGoalVelocityRpm(vel2);
-            
-            float vel3 = ((float)(armPos0Mot3 - cur3)) * ARM_VELOCITY_KP;
-            if (vel3 > ARM_VELOCITY_MAX) vel3 = ARM_VELOCITY_MAX;
-            else if (vel3 < -ARM_VELOCITY_MAX) vel3 = -ARM_VELOCITY_MAX;
-            armMot3.setGoalVelocityRpm(vel3);
-            
-            float vel4 = ((float)(armPos0Mot4 - cur4)) * ARM_VELOCITY_KP;
-            if (vel4 > ARM_VELOCITY_MAX) vel4 = ARM_VELOCITY_MAX;
-            else if (vel4 < -ARM_VELOCITY_MAX) vel4 = -ARM_VELOCITY_MAX;
-            armMot4.setGoalVelocityRpm(vel4);
-            
-            float vel5 = ((float)(armPos0Mot5 - cur5)) * ARM_VELOCITY_KP;
-            if (vel5 > ARM_VELOCITY_MAX) vel5 = ARM_VELOCITY_MAX;
-            else if (vel5 < -ARM_VELOCITY_MAX) vel5 = -ARM_VELOCITY_MAX;
-            armMot5.setGoalVelocityRpm(vel5);
-            
-            // J6 (beak) uses position control
-            armMot6.setGoalPWM(BEAK_FULL_PWM);
-            armMot6.setGoalPositionEpcm(armPos0Mot6);
-            
-            beakState = BeakState::IDLE;
-            armOldPosMot1Lr[0] = armPos0Mot1Lr[0];
-            armOldPosMot1Lr[1] = armPos0Mot1Lr[1];
-            armOldPosMot2 = armPos0Mot2;
-            armOldPosMot3 = armPos0Mot3;
-            armOldPosMot4 = armPos0Mot4;
-            armOldPosMot5 = armPos0Mot5;
-            LOG_INFO("[CAN] RESET_ARM: moving to home\n");
+            // Home arm to calibrated positions (blocking)
+            homeArm();
+            LOG_INFO("[CAN] RESET_ARM: homing complete\n");
             break;
         }
 
@@ -1518,13 +1512,6 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             armMot4.getPresentPosition(armPos0Mot4);
             armMot5.getPresentPosition(armPos0Mot5);
             armMot6.getPresentPosition(armPos0Mot6);
-
-            armOldPosMot1Lr[0] = armPos0Mot1Lr[0];
-            armOldPosMot1Lr[1] = armPos0Mot1Lr[1];
-            armOldPosMot2 = armPos0Mot2;
-            armOldPosMot3 = armPos0Mot3;
-            armOldPosMot4 = armPos0Mot4;
-            armOldPosMot5 = armPos0Mot5;
 
             if (msgData[0] == 1U)
             {
