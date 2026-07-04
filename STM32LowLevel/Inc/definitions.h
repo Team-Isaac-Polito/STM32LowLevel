@@ -73,11 +73,9 @@
 #define BEAK_HOLD_MAX_PWM      500    ///< Maximum hold PWM (prevents overheating)
 #define BEAK_HOLD_CTRL_MS      50     ///< Control loop interval (ms)
 
-// Arm velocity control constants (J1a, J1b, J2, J3, J4, J5
-#define ARM_VELOCITY_MAX        20   ///< Maximum velocity (DXL units) for arm joints 1-5
-#define ARM_VELOCITY_DEADBAND   10   ///< Deadband: ignore cmd changes smaller than this (DXL units)
-#define ARM_VELOCITY_KP         0.5f ///< Proportional gain: velocity = KP * position_error
-#define ARM_VELOCITY_KD         0.1f ///< Derivative gain for smooth differential control
+// Arm velocity control constants (J1a, J1b, J2, J3, J4, J5)
+#define ARM_HOME_TIME_SEC       1.0f ///< Time in seconds for homing to reach position
+#define ARM_HOME_POS_TOLERANCE  5    ///< Position tolerance for homing completion (DXL units)
 
 // Default arm home positions (DXL extended-position units) — used for initial positioning
 // Hardcoded values used at startup and overridden by valid Flash-stored values.
