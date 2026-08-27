@@ -21,6 +21,41 @@ static constexpr uint32_t EXTID_MASK = 0x1FFFFFFFU; // bits[28:0]: extended ID
 static constexpr uint32_t DLC_MASK = 0x000F0000U;   // bits[19:16]: DLC in RX word 1
 static constexpr uint32_t DLC_SHIFT = 16U;
 
+// Helper function to convert payload length (0-64 bytes) to FDCAN DLC code (0-15)
+static constexpr uint32_t length2DLC(uint8_t length)
+{
+    // CAN FD DLC encoding (per ISO 11898-1 / STM32 FDCAN spec)
+    if (length <= 8)
+    {
+        return (uint32_t)length; // 0-8: direct mapping
+    }
+    if (length <= 12)
+    {
+        return FDCAN_DLC_BYTES_12; // 9-12  → DLC 9
+    }
+    if (length <= 16)
+    {
+        return FDCAN_DLC_BYTES_16; // 13-16 → DLC 10
+    }
+    if (length <= 20)
+    {
+        return FDCAN_DLC_BYTES_20; // 17-20 → DLC 11
+    }
+    if (length <= 24)
+    {
+        return FDCAN_DLC_BYTES_24; // 21-24 → DLC 12
+    }
+    if (length <= 32)
+    {
+        return FDCAN_DLC_BYTES_32; // 25-32 → DLC 13
+    }
+    if (length <= 48)
+    {
+        return FDCAN_DLC_BYTES_48; // 33-48 → DLC 14
+    }
+    return FDCAN_DLC_BYTES_64; // 49-64 → DLC 15
+}
+
 void CanWrapper::begin()
 {
     // Configure one extended-ID mask filter:
@@ -64,23 +99,31 @@ bool CanWrapper::sendMessage(uint8_t msgType, const void* data, uint8_t length)
     // Word 0 (T0): XTD=1 (extended ID), RTR=0, ESI=0, ID[28:0]
     txAddr[0] = FDCAN_EXTENDED_ID | extId;
 
-    // Word 1 (T1): FDF=0 (classic CAN), BRS=0, DLC=8
-    txAddr[1] = FDCAN_DLC_BYTES_8 << DLC_SHIFT;
+    // Word 1 (T1): FDF=1 (FD format), BRS=1 (bit rate switching), DLC=dynamic
+    // FDCAN_DLC_BYTES_* values are 0-15, shift by DLC_SHIFT (16) to put in bits[19:16]
+    uint32_t dlcCode = length2DLC(length);
+    txAddr[1] = (FDCAN_FD_CAN | FDCAN_BRS_ON) | (dlcCode << DLC_SHIFT);
 
-    // Words 2–3: payload (little-endian, 4 bytes per word)
-    if (length > 8U)
+    // Words 2+: data (little-endian, 4 bytes per word)
+    // CAN FD max payload is 64 bytes = 16 words
+    if (length > 64U)
     {
-        length = 8U;
+        length = 64U;
     }
+
     const uint8_t* src = reinterpret_cast<const uint8_t*>(data);
-    uint8_t padded[8] = {};
+    uint8_t padded[64] = {};
     memcpy(padded, src, length);
-    uint32_t w0 = (static_cast<uint32_t>(padded[3]) << 24) | (static_cast<uint32_t>(padded[2]) << 16) |
-                  (static_cast<uint32_t>(padded[1]) << 8) | static_cast<uint32_t>(padded[0]);
-    uint32_t w1 = (static_cast<uint32_t>(padded[7]) << 24) | (static_cast<uint32_t>(padded[6]) << 16) |
-                  (static_cast<uint32_t>(padded[5]) << 8) | static_cast<uint32_t>(padded[4]);
-    txAddr[2] = w0;
-    txAddr[3] = w1;
+
+    // Write up to 16 words (64 bytes)
+    uint32_t numWords = (length + 3) / 4;
+    for (uint32_t i = 0; i < numWords; i++)
+    {
+        uint32_t w = (static_cast<uint32_t>(padded[i * 4 + 3]) << 24) |
+                     (static_cast<uint32_t>(padded[i * 4 + 2]) << 16) |
+                     (static_cast<uint32_t>(padded[i * 4 + 1]) << 8) | static_cast<uint32_t>(padded[i * 4]);
+        txAddr[2 + i] = w;
+    }
 
     // Request transmission (FDCAN2->TXBAR bit per put index)
     FDCAN2->TXBAR = (1U << putIdx);
@@ -108,14 +151,15 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
 
     // Word 1 (R1): bits[19:16] = DLC
     uint8_t dlc = static_cast<uint8_t>((rxAddr[1] & DLC_MASK) >> DLC_SHIFT);
-    if (dlc > 8U)
+
+    if (dlc > 15U)
     {
-        dlc = 8U;
+        dlc = 15U;
     }
 
-    // Words 2+: payload bytes (little-endian in 32-bit words)
-    uint8_t* payload = reinterpret_cast<uint8_t*>(&rxAddr[2]);
-    memcpy(data, payload, dlc);
+    // Words 2+: data bytes (little-endian in 32-bit words)
+    uint8_t* payloadData = reinterpret_cast<uint8_t*>(&rxAddr[2]);
+    memcpy(data, payloadData, dlc);
 
     // Acknowledge RX FIFO0 (increment get index)
     FDCAN2->RXF0A = getIdx;
