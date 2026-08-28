@@ -352,9 +352,15 @@ act --job clang-format
 
 If clang-format-19 is not installed:
 
+On Ubuntu/Debian/WSL:
 ```bash
 sudo apt update
 sudo apt install -y clang-format-19
+```
+
+On Windows, install via Winget:
+```powershell
+winget install -e --id LLVM.LLVM
 ```
 
 #### Verify Style Checks
