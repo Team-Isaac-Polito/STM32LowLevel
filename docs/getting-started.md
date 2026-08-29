@@ -6,69 +6,36 @@ This document explains how to **set up your development environment**, **configu
 
 ## Prerequisites
 
-You need four tools on your system before you can build. STM32CubeMX is optional and only needed for peripheral configuration.
+You need five tools on your system before you can build. STM32CubeMX is optional and only needed for peripheral configuration.
 
 | Tool | Minimum version | Purpose |
 |---|---|---|
 | [CMake](https://cmake.org/download/) | 3.25 | Build system generator |
 | [Ninja](https://github.com/ninja-build/ninja/releases) | any recent | Fast build backend (required by `CMakePresets.json`) |
+| [Clangd](https://clangd.llvm.org/installation.html) | 18+ | C/C++ Language Server Protocol (LSP) for IntelliSense |
 | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) | 13.x or later | `arm-none-eabi-gcc` cross-compiler |
 | [Visual Studio Code](https://code.visualstudio.com/) | any | Editor |
 
 ---
 
-## 1. Install CMake
-
-#### Option A — Windows Installer (Recommended)
+## 1. Install CMake, Ninja, and Clangd
 
 Open a PowerShell and run:
 ```powershell
 winget install Kitware.CMake
+winget install NinjaBuild.Ninja
+winget install LLVM.LLVM
 ```
 
-#### Option B — Manual Installation
-
-1. Download the Windows installer from [cmake.org/download](https://cmake.org/download/).
-2. During installation, select **"Add CMake to the system PATH for all users"**.
-3. Verify:
-   ```
-   cmake --version
-   ```
-
----
-
-## 2. Install Ninja
-
-Ninja is not included with CMake on Windows. Install it via **Chocolatey** (recommended) or manually.
-
-#### Option A — Windows Installer (Recommended)
-
-Open a PowerShell:
-```powershell
-winget install Ninja-build.Ninja
-```
-
-#### Option B — Chocolatey
-
-If you have Chocolatey installed, open an **Administrator** PowerShell:
-```powershell
-choco install ninja
-```
-
-#### Option C — Manual
-
-1. Download the `ninja-win.zip` from [github.com/ninja-build/ninja/releases](https://github.com/ninja-build/ninja/releases).
-2. Extract `ninja.exe` to a folder, e.g. `C:\tools\ninja\`.
-3. Add that folder to your **system PATH** (System Properties → Environment Variables → Path → New).
-
-Verify:
-```
-ninja --version
+Use sudo if you are on Linux:
+```bash
+sudo apt update
+sudo apt install -y cmake ninja-build clangd
 ```
 
 ---
 
-## 3. Install the Arm GNU Toolchain
+## 2. Install the Arm GNU Toolchain
 
 1. Download the **Windows (mingw-w64-i686) hosted** release from:
    [developer.arm.com/downloads/-/arm-gnu-toolchain-downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
@@ -87,24 +54,55 @@ ninja --version
    arm-none-eabi-gcc --version
    ```
 
-> **STM32CubeIDE users:** If you already have STM32CubeIDE installed, a compatible toolchain is bundled inside:
-> ```
-> C:\ST\STM32CubeIDE_x.x.x\STM32CubeIDE\plugins\com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.x.x.x...\tools\bin\
-> ```
-> You can add that folder to your PATH instead of installing the toolchain separately.
+on Linux, install via apt:
+```bash
+sudo apt install -y gcc-arm-none-eabi
+```
 
 ---
 
-## 4. Install VS Code Extensions
+## 3. Install VS Code Extensions
 
 Open VS Code and install the extensions below:
 
 - **CMake Tools** (`ms-vscode.cmake-tools`) — configure and build from the sidebar
-- **C/C++** (`ms-vscode.cpptools`) — IntelliSense and navigation
+- **C/C++** (`ms-vscode.cpptools`) — provides IntelliSense and debugging support
+- **clangd** (`llvm-vs-code-extensions.vscode-clangd`) — **recommended** LSP for C/C++ with cross-compilation support
+- **STM32Cube for Visual Studio Code** (`STMicroelectronics.stm32cubeide-vscode`) — optional, for CubeMX integration
+
+### Clangd Configuration
+
+Add to `.vscode/settings.json` in your workspace:
+
+```json
+{
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "C_Cpp.intelliSenseEngineFallback": "disabled",
+    "clangd.arguments": [
+        "--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe",
+        "--background-index",
+        "--clang-tidy",
+        "--completion-style=detailed",
+        "--header-insertion=iwyu",
+    ],
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "*.cpp": "cpp",
+        "*.hpp": "cpp"
+    }
+}
+```
+
+**Key points:**
+- `"C_Cpp.intelliSenseEngine": "disabled"` — turns off default IntelliSense to avoid duplicate diagnostics
+- `"--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe"` — tells clangd where to find the cross-compiler binaries. First string is for WSL/Linux, second and third are for Windows (case-insensitive)
+- `--clang-tidy` — enables inline static analysis
+- Run `cmake --preset MK2_MOD1` first to generate `compile_commands.json`. Then, reload window in VS Code. Clangd will automatically pick it up thanks to the `CompilationDatabase` flag in the `.clangd` file.
 
 ---
 
-## 5. Clone and Open the Project
+## 4. Clone and Open the Project
 
 ```powershell
 git clone https://github.com/Team-Isaac-Polito/STM32LowLevel.git
@@ -124,7 +122,7 @@ STM32LowLevel/          ← repo root
 
 ---
 
-## 6. Build & Flash Workflows
+## 5. Build & Flash Workflows
 
 All commands run from inside `STM32LowLevel/STM32LowLevel/`.
 
@@ -172,7 +170,7 @@ The project supports the following target presets across debug, release, and aut
 
 ---
 
-## 7. Flashing
+## 6. Flashing
 
 Flashing is handled automatically via a custom script wrapper called by the `flash` target or workflow presets. On Windows hosts, the script automatically attempts a **WSL Fallback** if native Windows binaries for `dfu-util` are missing.
 
@@ -256,7 +254,7 @@ where:
 
 ---
 
-## 8. USB CDC Debug Output
+## 7. USB CDC Debug Output
 
 The firmware routes all debug output (`debug.log()`) to a USB CDC (Communications Device Class) Virtual COM Port. No external adapter is needed — just connect the board's USB FS port to your PC.
 
