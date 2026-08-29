@@ -2,10 +2,24 @@ CompileFlags:
   Add:
     - '-ferror-limit=0'
     - '-Wno-implicit-int'
-  CompilationDatabase: build/Debug
+  CompilationDatabase: build/
 Diagnostics:
   Suppress:
     - unused-includes
     - unknown_typename
     - unknown_typename_suggest
     - typename_requires_specqual
+---
+If:
+    PathMatch: 
+      - "Core/Inc/.*"
+      - "Drivers/.*"
+      - "USB_Device/.*"
+      - "Core/Src/.*"
+    PathExclude: "Core/Src/main\\.cpp"
+
+Diagnostics:
+  ClangTidy:
+    Remove:
+      - readability-identifier-naming
+      - readability-*

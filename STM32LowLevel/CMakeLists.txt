@@ -237,3 +237,14 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
     # Add user defined libraries
 )
+
+# Automatically copy compile_commands.json to the build root after building
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    add_custom_command(
+        TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_BINARY_DIR}/compile_commands.json"
+            "${CMAKE_SOURCE_DIR}/build/compile_commands.json"
+        COMMENT "Copying compile_commands.json to build root for clangd..."
+    )
+endif()
