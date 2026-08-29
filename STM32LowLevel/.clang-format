@@ -36,7 +36,8 @@ AllowShortBlocksOnASingleLine: Empty
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortLambdasOnASingleLine: None
-RemoveBracesLLVM: true
+RemoveBracesLLVM: false
+InsertBraces: true
 
 # Line length
 ColumnLimit: 120
