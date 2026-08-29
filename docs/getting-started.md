@@ -12,7 +12,7 @@ You need five tools on your system before you can build. STM32CubeMX is optional
 |---|---|---|
 | [CMake](https://cmake.org/download/) | 3.25 | Build system generator |
 | [Ninja](https://github.com/ninja-build/ninja/releases) | any recent | Fast build backend (required by `CMakePresets.json`) |
-| [Clangd](https://clangd.llvm.org/installation.html) | 18+ | C/C++ Language Server Protocol (LSP) for IntelliSense |
+| [Clangd](https://clangd.llvm.org/installation.html) | 19+ | C/C++ Language Server Protocol (LSP) for IntelliSense |
 | [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads) | 13.x or later | `arm-none-eabi-gcc` cross-compiler |
 | [Visual Studio Code](https://code.visualstudio.com/) | any | Editor |
 
@@ -76,6 +76,14 @@ Add to `.vscode/settings.json` in your workspace:
 
 ```json
 {
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true
+    },
     "C_Cpp.intelliSenseEngine": "disabled",
     "C_Cpp.intelliSenseEngineFallback": "disabled",
     "clangd.arguments": [
@@ -348,12 +356,14 @@ act --job clang-format
 
 #### Installation
 
-If clang-format-19 is not installed:
+If clang-format with version 19+ is not installed:
 
 On Ubuntu/Debian/WSL:
 ```bash
-sudo apt update
-sudo apt install -y clang-format-19
+sudo apt-get update
+sudo apt-get install -y clang-format-19
+sudo ln -sf /usr/bin/clang-format-19 /usr/bin/clang-format
+clang-format --version
 ```
 
 On Windows, install via Winget:
@@ -367,7 +377,7 @@ To verify that all files pass the style checks on Linux/WSL:
 
 ```bash
 # Test that all files pass clang-format checks (same as GitHub workflow)
-find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format-19 --dry-run --Werror
+find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format --dry-run --Werror
 
 # If no output, all files pass style checks
 # If output shows errors, files need formatting
@@ -378,7 +388,7 @@ On Windows:
 Get-ChildItem -Path Core/Src, Lib, USB_Device -Include *.cpp, *.h, *.tpp -Recurse | ForEach-Object { clang-format --dry-run --Werror -style=file $_.FullName }
 ```
 
-#### Quick Auto-Fix (Recommended)
+#### Quick Auto-Fix
 
 To automatically fix all style issues in the project according to the style workflow, run the following command on Linux/WSL:
 
@@ -387,7 +397,7 @@ To automatically fix all style issues in the project according to the style work
 cd STM32LowLevel
 
 # Format ALL files that are checked by the style workflow
-find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format-19 -i -style=file
+find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format -i -style=file
 ```
 
 On Windows:
@@ -401,7 +411,7 @@ To check if a specific file needs formatting:
 
 ```bash
 # Check specific file
-clang-format-19 -style=file Core/Src/main.cpp | diff -u Core/Src/main.cpp -
+clang-format -style=file Core/Src/main.cpp | diff -u Core/Src/main.cpp -
 
 # If no output, file is properly formatted
 # If output shows differences, file needs formatting
