@@ -20,7 +20,7 @@
 // USB CDC interface
 #include "usbd_cdc_if.h"
 
-static Level sLevel = Level::LogDebug; //< Active verbosity level
+static Level sLevel = Level::LogDebug; ///< Active verbosity level
 
 static const char* levelPrefix(Level level)
 {
@@ -51,12 +51,16 @@ void SerialDebug::setLevel(Level lvl)
 void SerialDebug::vlog(Level lvl, const char* fmt, va_list args)
 {
     if (sLevel == Level::LogOff || lvl > sLevel)
+    {
         return;
+    }
 
     // Print level prefix
     const char* prefix = levelPrefix(lvl);
     while (*prefix)
+    {
         debug.putchar(*prefix++);
+    }
 
     // Format the message into a local buffer to avoid repeated putchar calls
     char buf[128];
@@ -65,7 +69,9 @@ void SerialDebug::vlog(Level lvl, const char* fmt, va_list args)
     // Transmit the formatted string; clamp to buffer size on overflow
     int send = (n > 0 && n < (int)sizeof(buf)) ? n : (int)sizeof(buf) - 1;
     for (int i = 0; i < send; ++i)
+    {
         debug.putchar(buf[i]);
+    }
 }
 
 void SerialDebug::log(Level lvl, const char* fmt, ...)
@@ -81,7 +87,9 @@ extern "C" int write(int file, char* ptr, int len)
 {
     (void)file;
     for (int i = 0; i < len; ++i)
+    {
         debug.putchar(ptr[i]);
+    }
     return len;
 }
 

@@ -32,7 +32,9 @@ void DynamixelLL::enableSync(const uint8_t* motorIDs, uint8_t numMotors)
     _numMotors = numMotors;
     _sync = true;
     for (uint8_t i = 0; i < numMotors; ++i)
+    {
         _motorIDs[i] = motorIDs[i];
+    }
 }
 
 void DynamixelLL::disableSync()
@@ -66,7 +68,9 @@ void DynamixelLL::printResponse()
     }
     debug.log(Level::LogDebug, "DXL response: id=0x%02X err=0x%02X data=", pkt.id, pkt.error);
     for (uint8_t i = 0; i < pkt.dataLength; i++)
+    {
         debug.log(Level::LogDebug, "0x%02X ", pkt.data[i]);
+    }
     debug.log(Level::LogDebug, "\n");
 }
 
@@ -86,12 +90,16 @@ uint8_t DynamixelLL::ping(uint32_t& modelNumber)
     packet[9] = (uint8_t)(crc >> 8);
 
     if (!sendPacket(packet, 10u))
+    {
         return 1u;
+    }
 
     DxlStatusPacket rsp = receivePacket();
     modelNumber = 0;
     for (uint8_t i = 0; i < rsp.dataLength && i < 4u; ++i)
+    {
         modelNumber |= (uint32_t)rsp.data[i] << (8 * i);
+    }
     return rsp.valid ? rsp.error : 1u;
 }
 
@@ -111,7 +119,9 @@ uint8_t DynamixelLL::reboot()
     packet[9] = (uint8_t)(crc >> 8);
 
     if (!sendPacket(packet, 10u))
+    {
         return 1u;
+    }
     DxlStatusPacket rsp = receivePacket();
     return rsp.valid ? rsp.error : 1u;
 }
@@ -133,7 +143,9 @@ uint8_t DynamixelLL::factoryReset(uint8_t level)
     packet[10] = (uint8_t)(crc >> 8);
 
     if (!sendPacket(packet, 11u))
+    {
         return 1u;
+    }
     DxlStatusPacket rsp = receivePacket();
     return rsp.valid ? rsp.error : 1u;
 }
@@ -155,9 +167,13 @@ uint8_t DynamixelLL::setOperatingMode(uint8_t mode)
 uint8_t DynamixelLL::setHomingOffset(int32_t offset)
 {
     if (offset > 1044479)
+    {
         offset = 1044479;
+    }
     if (offset < -1044479)
+    {
         offset = -1044479;
+    }
     return writeRegister(20u, (uint32_t)offset, 4u);
 }
 
@@ -169,7 +185,9 @@ uint8_t DynamixelLL::setHomingOffsetA(float offsetAngle)
 uint8_t DynamixelLL::setGoalPositionPcm(uint16_t goalPosition)
 {
     if (goalPosition > 4095u)
+    {
         goalPosition = 4095u;
+    }
     return writeRegister(116u, goalPosition, 4u);
 }
 
@@ -177,16 +195,22 @@ uint8_t DynamixelLL::setGoalPositionAPcm(float angleDegrees)
 {
     uint32_t pos = (uint32_t)(angleDegrees / 0.088f);
     if (pos > 4095u)
+    {
         pos = 4095u;
+    }
     return writeRegister(116u, pos, 4u);
 }
 
 uint8_t DynamixelLL::setGoalPositionEpcm(int32_t extendedPosition)
 {
     if (extendedPosition > 1048575)
+    {
         extendedPosition = 1048575;
+    }
     if (extendedPosition < -1048575)
+    {
         extendedPosition = -1048575;
+    }
     return writeRegister(116u, (uint32_t)extendedPosition, 4u);
 }
 
@@ -233,7 +257,9 @@ uint8_t DynamixelLL::setBaudRate(uint8_t baudRate)
 uint8_t DynamixelLL::setReturnDelayTime(uint8_t delayTime)
 {
     if (delayTime > 254u)
+    {
         delayTime = 254u;
+    }
     return writeRegister(9u, delayTime, 1u);
 }
 
@@ -241,11 +267,17 @@ uint8_t DynamixelLL::setDriveMode(bool torqueOnByGoalUpdate, bool timeBasedProfi
 {
     uint8_t mode = 0;
     if (torqueOnByGoalUpdate)
+    {
         mode |= 0x08u;
+    }
     if (timeBasedProfile)
+    {
         mode |= 0x04u;
+    }
     if (reverseMode)
+    {
         mode |= 0x01u;
+    }
     return writeRegister(10u, mode, 1u);
 }
 
@@ -255,7 +287,9 @@ uint8_t DynamixelLL::setProfileVelocity(uint32_t profileVelocity)
     readRegister<uint8_t>(10u, dm, 1u);
     uint32_t maxPV = (dm & 0x04u) ? 32737UL : 32767UL;
     if (profileVelocity > maxPV)
+    {
         profileVelocity = maxPV;
+    }
     return writeRegister(112u, profileVelocity, 4u);
 }
 
@@ -266,12 +300,16 @@ uint8_t DynamixelLL::setProfileAcceleration(uint32_t profileAcceleration)
     bool timeBased = (dm & 0x04u) != 0;
     uint32_t maxPA = timeBased ? 32737UL : 32767UL;
     if (profileAcceleration > maxPA)
+    {
         profileAcceleration = maxPA;
+    }
     if (timeBased)
     {
         uint32_t pv = 0;
         if (readRegister<uint32_t>(112u, pv, 4u) == 0 && pv > 0 && profileAcceleration > pv / 2)
+        {
             profileAcceleration = pv / 2;
+        }
     }
     return writeRegister(108u, profileAcceleration, 4u);
 }
@@ -280,9 +318,13 @@ uint8_t DynamixelLL::setGoalVelocityRpm(float rpm)
 {
     const float maxRPM = 30.0f; // conservative limit at 12 V
     if (rpm > maxRPM)
+    {
         rpm = maxRPM;
+    }
     if (rpm < -maxRPM)
+    {
         rpm = -maxRPM;
+    }
     int16_t val = (int16_t)(rpm / 0.229f);
     return writeRegister(104u, (uint32_t)val, 4u);
 }
@@ -292,7 +334,9 @@ uint8_t DynamixelLL::getPresentVelocityRpm(float& rpm)
     int16_t raw = 0;
     uint8_t err = readRegister<int16_t>(128u, raw, 4u);
     if (!err)
+    {
         rpm = raw * 0.229f;
+    }
     return err;
 }
 
@@ -327,9 +371,13 @@ uint8_t DynamixelLL::getHardwareErrorStatus(uint8_t& hwErrorStatus)
 uint8_t DynamixelLL::setGoalPWM(int16_t goalPWM)
 {
     if (goalPWM > 885)
+    {
         goalPWM = 885;
+    }
     if (goalPWM < -885)
+    {
         goalPWM = -885;
+    }
     return writeRegister(100u, (uint32_t)(uint16_t)goalPWM, 2u);
 }
 
@@ -345,7 +393,9 @@ uint16_t DynamixelLL::calculateCRC(const uint8_t* data, uint16_t length)
 
     // Feed bytes one at a time.
     for (uint16_t i = 0; i < length; ++i)
+    {
         LL_CRC_FeedData8(CRC, data[i]);
+    }
 
     return static_cast<uint16_t>(LL_CRC_ReadData16(CRC));
 }
@@ -357,7 +407,9 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
         int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL TX(%u):", (unsigned)length);
         for (uint16_t i = 0; i < length && pos < (int)sizeof(hexBuf) - 4; ++i)
+        {
             pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", packet[i]);
+        }
         LOG_DEBUG("%s\n", hexBuf);
     }
 #endif
@@ -371,7 +423,9 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
 
     // Flush any truly stale RX data and clear latent errors before starting
     while (LL_USART_IsActiveFlag_RXNE(_usart))
+    {
         (void)LL_USART_ReceiveData8(_usart);
+    }
     LL_USART_ClearFlag_ORE(_usart);
     LL_USART_ClearFlag_FE(_usart);
 
@@ -408,7 +462,9 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
 
     if (activityCb)
+    {
         activityCb();
+    }
 
     return true;
 }
@@ -423,15 +479,23 @@ DxlStatusPacket DynamixelLL::receivePacket()
     // NE (Noise Error): triggered by noise on the bus
     // ORE (Overrun Error): triggered by self-echo in half-duplex mode
     if (LL_USART_IsActiveFlag_FE(_usart))
+    {
         LL_USART_ClearFlag_FE(_usart);
+    }
     if (LL_USART_IsActiveFlag_NE(_usart))
+    {
         LL_USART_ClearFlag_NE(_usart);
+    }
     if (LL_USART_IsActiveFlag_ORE(_usart))
+    {
         LL_USART_ClearFlag_ORE(_usart);
+    }
 
     // Flush any stale bytes from a previous failed read
     while (LL_USART_IsActiveFlag_RXNE(_usart))
+    {
         (void)LL_USART_ReceiveData8(_usart);
+    }
 
     uint8_t buf[DXL_MAX_PACKET_SIZE];
     uint16_t idx = 0;
@@ -488,8 +552,12 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     // read until we have the ID + 2-byte length field (7 bytes total)
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
+    {
         if (LL_USART_IsActiveFlag_RXNE(_usart))
+        {
             buf[idx++] = LL_USART_ReceiveData8(_usart);
+        }
+    }
     if (idx < 7)
     {
         LOG_WARN("DXL: header extension timeout\n");
@@ -508,8 +576,12 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     // read remaining bytes
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
+    {
         if (LL_USART_IsActiveFlag_RXNE(_usart))
+        {
             buf[idx++] = LL_USART_ReceiveData8(_usart);
+        }
+    }
     if (idx < totalPacketLength)
     {
         LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
@@ -521,7 +593,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
         char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
         int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
         for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
+        {
             pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
+        }
         LOG_DEBUG("%s\n", hexBuf);
     }
 #endif
@@ -537,7 +611,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
     uint8_t paramLength = (uint8_t)(lengthField - 4u);
     result.dataLength = paramLength;
     for (uint8_t i = 0; i < paramLength && i < (uint8_t)sizeof(result.data); ++i)
+    {
         result.data[i] = buf[9 + i];
+    }
 
     // verify CRC
     uint16_t receivedCRC = (uint16_t)buf[9 + paramLength] | ((uint16_t)buf[10 + paramLength] << 8);
@@ -551,7 +627,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     result.valid = true;
     if (activityCb)
+    {
         activityCb();
+    }
     return result;
 }
 
@@ -561,7 +639,9 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
     {
         uint32_t buf[_numMotors];
         for (uint8_t i = 0; i < _numMotors; ++i)
+        {
             buf[i] = value;
+        }
         return syncWrite(address, size, _motorIDs, buf, _numMotors) ? 0u : 1u;
     }
 
@@ -581,7 +661,9 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
     packet[8] = (uint8_t)(address & 0xFF);
     packet[9] = (uint8_t)(address >> 8);
     for (uint8_t i = 0; i < size; ++i)
+    {
         packet[10 + i] = (uint8_t)((value >> (8 * i)) & 0xFF);
+    }
     uint16_t crc = calculateCRC(packet, pktLen - 2u);
     packet[pktLen - 2] = (uint8_t)(crc & 0xFF);
     packet[pktLen - 1] = (uint8_t)(crc >> 8);
@@ -599,7 +681,9 @@ uint8_t DynamixelLL::writeRegister(uint16_t address, uint32_t value, uint8_t siz
         return 1u; // Return error when no valid status packet received
     }
     if (rsp.error)
+    {
         LOG_WARN("DXL: write error 0x%02X\n", rsp.error);
+    }
     return rsp.error;
 }
 
@@ -619,7 +703,9 @@ bool DynamixelLL::syncWrite(uint16_t address, uint8_t dataLength, const uint8_t*
     {
         params[idx++] = ids[i];
         for (uint8_t j = 0; j < dataLength; ++j)
+        {
             params[idx++] = (uint8_t)((values[i] >> (8 * j)) & 0xFF);
+        }
     }
     return sendSyncWritePacket(params, paramLen);
 }
@@ -668,7 +754,9 @@ bool DynamixelLL::sendSyncReadPacket(uint16_t address, uint8_t dataLength, const
     packet[idx++] = dataLength;
     packet[idx++] = 0;
     for (uint8_t i = 0; i < count; ++i)
+    {
         packet[idx++] = ids[i];
+    }
     uint16_t crc = calculateCRC(packet, pktSize - 2u);
     packet[idx++] = (uint8_t)(crc & 0xFF);
     packet[idx++] = (uint8_t)(crc >> 8);
@@ -680,7 +768,9 @@ bool DynamixelLL::bulkWrite(
 {
     uint16_t paramBlockLength = 0;
     for (uint8_t i = 0; i < count; i++)
+    {
         paramBlockLength += 5 + dataLengths[i];
+    }
 
     uint8_t params[paramBlockLength];
     uint16_t idx = 0;
@@ -693,7 +783,9 @@ bool DynamixelLL::bulkWrite(
         params[idx++] = dataLengths[i] & 0xFF;
         params[idx++] = (dataLengths[i] >> 8) & 0xFF;
         for (uint8_t j = 0; j < dataLengths[i]; j++)
+        {
             params[idx++] = (values[i] >> (8 * j)) & 0xFF;
+        }
     }
 
     return sendBulkWritePacket(params, paramBlockLength);
@@ -719,7 +811,9 @@ DynamixelLL::bulkRead(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLeng
         }
         values[i] = 0;
         for (uint8_t j = 0; j < response.dataLength; j++)
+        {
             values[i] |= (static_cast<uint32_t>(response.data[j]) << (8 * j));
+        }
     }
 
     return retError;
@@ -781,6 +875,8 @@ bool DynamixelLL::sendBulkReadPacket(const uint8_t* ids, uint16_t* addresses, ui
 uint8_t DynamixelLL::checkArraySize(uint8_t arraySize) const
 {
     if (arraySize != _numMotors)
+    {
         return 1u;
+    }
     return 0u;
 }

@@ -69,7 +69,9 @@ bool CanWrapper::sendMessage(uint8_t msgType, const void* data, uint8_t length)
 
     // Words 2–3: payload (little-endian, 4 bytes per word)
     if (length > 8U)
+    {
         length = 8U;
+    }
     const uint8_t* src = reinterpret_cast<const uint8_t*>(data);
     uint8_t padded[8] = {};
     memcpy(padded, src, length);
@@ -90,7 +92,9 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
 {
     // Check RX FIFO0 fill level (FDCAN_RXF0S.F0FL bits[6:0])
     if ((FDCAN2->RXF0S & FDCAN_RXF0S_F0FL) == 0U)
+    {
         return false;
+    }
 
     // Get RX FIFO0 get index (FDCAN_RXF0S.F0GI bits[13:8])
     uint32_t getIdx = (FDCAN2->RXF0S & FDCAN_RXF0S_F0GI_Msk) >> FDCAN_RXF0S_F0GI_Pos;
@@ -105,7 +109,9 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
     // Word 1 (R1): bits[19:16] = DLC
     uint8_t dlc = static_cast<uint8_t>((rxAddr[1] & DLC_MASK) >> DLC_SHIFT);
     if (dlc > 8U)
+    {
         dlc = 8U;
+    }
 
     // Words 2+: payload bytes (little-endian in 32-bit words)
     uint8_t* payload = reinterpret_cast<uint8_t*>(&rxAddr[2]);

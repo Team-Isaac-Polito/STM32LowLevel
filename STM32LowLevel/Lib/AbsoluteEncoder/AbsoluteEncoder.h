@@ -53,7 +53,7 @@ class AbsoluteEncoder
     float readRaw();
 
   private:
-    uint8_t _addr; //< I2C address of the AS5048B sensor
+    uint8_t _addr; ///< I2C address of the AS5048B sensor
 
     /**
      * @brief Read one byte from register @p reg.

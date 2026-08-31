@@ -232,9 +232,13 @@ static inline void ledSet(Led led, bool state)
             return;
     }
     if (state)
+    {
         LL_GPIO_SetOutputPin(port, pin);
+    }
     else
+    {
         LL_GPIO_ResetOutputPin(port, pin);
+    }
 }
 
 static inline void ledToggle(Led led)
@@ -448,7 +452,9 @@ extern "C" int main(void)
         {
             timeBat = now;
             if (!battery.charged())
+            {
                 LOG_WARN("[main] Low battery: %.2f V\n", battery.readVoltage());
+            }
         }
 
         // Telemetry / feedback (25 Hz)
@@ -563,7 +569,9 @@ extern "C" void systemClockConfig(void)
 
     /* Update the time base */
     if (HAL_InitTick(TICK_INT_PRIORITY) != HAL_OK)
+    {
         Error_Handler();
+    }
 }
 
 /* USER CODE BEGIN 4 */
@@ -597,10 +605,16 @@ static void i2cBusScan(void)
         // Wait for bus ready
         uint32_t busyTo = 100000U;
         while (I2C1->ISR & I2C_ISR_BUSY)
+        {
             if (--busyTo == 0U)
+            {
                 break;
+            }
+        }
         if (I2C1->ISR & I2C_ISR_BUSY)
+        {
             continue;
+        }
 
         // Clear errors
         I2C1->ICR = I2C_ICR_NACKCF | I2C_ICR_STOPCF;
@@ -615,16 +629,24 @@ static void i2cBusScan(void)
 
         uint32_t timeout = 100000U;
         while (!(I2C1->ISR & I2C_ISR_STOPF) && !(I2C1->ISR & I2C_ISR_NACKF))
+        {
             if (--timeout == 0U)
+            {
                 break;
+            }
+        }
 
         bool nack = (I2C1->ISR & I2C_ISR_NACKF) != 0;
         bool stopf = (I2C1->ISR & I2C_ISR_STOPF) != 0;
 
         if (nack)
+        {
             I2C1->ICR = I2C_ICR_NACKCF;
+        }
         if (stopf)
+        {
             I2C1->ICR = I2C_ICR_STOPCF;
+        }
 
         if (stopf && !nack)
         {
@@ -646,7 +668,9 @@ static void dxlBusInit(USART_TypeDef* usart)
     LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
 
     while (LL_USART_IsActiveFlag_RXNE(usart))
+    {
         (void)LL_USART_ReceiveData8(usart);
+    }
 }
 
 /**
@@ -956,9 +980,13 @@ static void tickBeakStateMachine(uint32_t now)
 
             int16_t newPWM = BEAK_HOLD_PWM + pwmAdjustment;
             if (newPWM < BEAK_HOLD_MIN_PWM)
+            {
                 newPWM = BEAK_HOLD_MIN_PWM;
+            }
             if (newPWM > BEAK_HOLD_MAX_PWM)
+            {
                 newPWM = BEAK_HOLD_MAX_PWM;
+            }
 
             armMot6.setGoalPWM(newPWM);
 
@@ -1083,10 +1111,12 @@ static void DXL_JOINT_INIT(void)
     // jointMot2 commented out since no roll motor on the joint module is installed yet
     bool ok = jointDxl.getPresentPosition(cur_1LR) == 0; // && jointMot2.getPresentPosition(cur_2) == 0;
     HAL_Delay(10U);
-    
+
 #ifdef DEBUG
     if (!ok)
+    {
         LOG_WARN("[JOINT_INIT] Position read failed\n");
+    }
 #endif
 
     jointDxl.setGoalPositionEpcm(cur_1LR);
@@ -1094,7 +1124,7 @@ static void DXL_JOINT_INIT(void)
     HAL_Delay(10U);
 
     // Initialize starting home positions
-    if (ok) 
+    if (ok)
     {
         jointPos0Mot1Lr[0] = cur_1LR[0];
         jointPos0Mot1Lr[1] = cur_1LR[1];
@@ -1107,7 +1137,7 @@ static void DXL_JOINT_INIT(void)
         jointPos0Mot1Lr[1] = 0;
         // jointPos0Mot2 = 0;
     }
-    
+
     LOG_INFO("[JOINT_INIT] Joint DXL initialised\n");
 }
 #endif // MODC_JOINT
@@ -1455,9 +1485,13 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             armOldPosMot5 = armPos0Mot5;
 
             if (msgData[0] == 1U)
+            {
                 (void)saveHomePositions();
+            }
             else
+            {
                 LOG_INFO("[CAN] SET_HOME: session home updated\n");
+            }
             break;
         }
 #endif // MODC_ARM

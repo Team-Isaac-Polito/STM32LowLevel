@@ -27,7 +27,9 @@ static void i2cBusRecovery(void)
         for (volatile uint32_t d = 0; d < 1000; d++)
             ;
         if (LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_7))
+        {
             break;
+        }
     }
 
     LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_15);
@@ -50,8 +52,12 @@ static inline bool waitSet(volatile uint32_t* reg, uint32_t mask)
 {
     uint32_t count = I2C_TIMEOUT_LOOPS;
     while (!(*reg & mask))
+    {
         if (--count == 0U)
+        {
             return false;
+        }
+    }
     return true;
 }
 
@@ -59,8 +65,12 @@ static inline bool waitClear(volatile uint32_t* reg, uint32_t mask)
 {
     uint32_t count = I2C_TIMEOUT_LOOPS;
     while (*reg & mask)
+    {
         if (--count == 0U)
+        {
             return false;
+        }
+    }
     return true;
 }
 
@@ -79,7 +89,9 @@ static bool i2cReadReg(uint8_t devAddr, uint8_t reg, uint8_t* buf, uint8_t len)
     {
         i2cBusRecovery();
         if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+        {
             return false;
+        }
     }
 
     i2cClearErrors();
@@ -152,7 +164,9 @@ static bool i2cWriteReg(uint8_t devAddr, uint8_t reg, uint8_t val)
     {
         i2cBusRecovery();
         if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+        {
             return false;
+        }
     }
 
     i2cClearErrors();
@@ -212,7 +226,9 @@ void AbsoluteEncoder::setZero()
 
     uint16_t raw = 0;
     if (!readReg16(AS5048B_ANGLMSB_REG, raw))
+    {
         return;
+    }
 
     writeReg(AS5048B_ZEROMSB_REG, static_cast<uint8_t>(raw >> 6));
     writeReg(AS5048B_ZEROLSB_REG, static_cast<uint8_t>(raw & 0x3FU));
@@ -235,7 +251,9 @@ float AbsoluteEncoder::readAngle()
 
             // Remap to (-180, 180]
             if (angle > 180.0f)
+            {
                 angle -= 360.0f;
+            }
 
             return angle;
         }
@@ -248,7 +266,9 @@ float AbsoluteEncoder::readRaw()
 {
     uint16_t raw = 0;
     if (!readReg16(AS5048B_ANGLMSB_REG, raw))
+    {
         return ENCODER_READ_ERROR;
+    }
     return static_cast<float>(raw);
 }
 
@@ -261,7 +281,9 @@ bool AbsoluteEncoder::readReg16(uint8_t reg, uint16_t& out)
 {
     uint8_t buf[2] = {};
     if (!i2cReadReg(_addr, reg, buf, 2U))
+    {
         return false;
+    }
 
     out = static_cast<uint16_t>(static_cast<uint16_t>(buf[0]) << 6) | static_cast<uint16_t>(buf[1] & 0x3FU);
     return true;

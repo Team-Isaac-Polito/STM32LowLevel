@@ -28,20 +28,20 @@
 
 // clang-format off
 // Instruction codes
-#define DXL_INST_PING          0x01u //< Instruction that checks whether the Packet has arrived at a device with the same ID as the specified packet ID
-#define DXL_INST_READ          0x02u //< Instruction to read data from the Device
-#define DXL_INST_WRITE         0x03u //< Instruction to write data to the Device
-#define DXL_INST_FACTORY_RESET 0x06u //< Instruction that resets the Control Table to its initial factory default settings
-#define DXL_INST_REBOOT        0x08u //< Instruction to reboot the Device
-#define DXL_INST_SYNC_WRITE    0x83u //< Instruction to write data to multiple devices with the same Address with the same length at once
-#define DXL_INST_SYNC_READ     0x82u //< Instruction to read data from multiple devices with the same Address with the same length at once
-#define DXL_INST_BULK_WRITE    0x93u //< Instruction to write data to multiple devices with different Addresses with different lengths at once
-#define DXL_INST_BULK_READ     0x92u //< Instruction to read data from multiple devices with different Addresses with different lengths at once
-#define DXL_STATUS_INST        0x55u //< Return packet sent following the execution of an Instruction Packet
+#define DXL_INST_PING          0x01u ///< Instruction that checks whether the Packet has arrived at a device with the same ID as the specified packet ID
+#define DXL_INST_READ          0x02u ///< Instruction to read data from the Device
+#define DXL_INST_WRITE         0x03u ///< Instruction to write data to the Device
+#define DXL_INST_FACTORY_RESET 0x06u ///< Instruction that resets the Control Table to its initial factory default settings
+#define DXL_INST_REBOOT        0x08u ///< Instruction to reboot the Device
+#define DXL_INST_SYNC_WRITE    0x83u ///< Instruction to write data to multiple devices with the same Address with the same length at once
+#define DXL_INST_SYNC_READ     0x82u ///< Instruction to read data from multiple devices with the same Address with the same length at once
+#define DXL_INST_BULK_WRITE    0x93u ///< Instruction to write data to multiple devices with different Addresses with different lengths at once
+#define DXL_INST_BULK_READ     0x92u ///< Instruction to read data from multiple devices with different Addresses with different lengths at once
+#define DXL_STATUS_INST        0x55u ///< Return packet sent following the execution of an Instruction Packet
 
-#define DXL_BROADCAST_ID     0xFEu  //< Broadcast ID
-#define DXL_RX_TIMEOUT_MS    10u    //< Receive timeout in milliseconds
-#define DXL_MAX_PACKET_SIZE  128u   //< Maximum receive buffer size (bytes)
+#define DXL_BROADCAST_ID     0xFEu  ///< Broadcast ID
+#define DXL_RX_TIMEOUT_MS    10u    ///< Receive timeout in milliseconds
+#define DXL_MAX_PACKET_SIZE  128u   ///< Maximum receive buffer size (bytes)
 // clang-format on
 
 /**
@@ -49,11 +49,11 @@
  */
 struct DxlStatusPacket
 {
-    bool valid;         //< True if packet is valid and CRC passed
-    uint8_t id;         //< Servo ID that sent the response
-    uint8_t error;      //< Error byte from status packet
-    uint8_t data[8];    //< Parameter bytes (up to 8)
-    uint8_t dataLength; //< Number of parameter bytes received
+    bool valid;         ///< True if packet is valid and CRC passed
+    uint8_t id;         ///< Servo ID that sent the response
+    uint8_t error;      ///< Error byte from status packet
+    uint8_t data[8];    ///< Parameter bytes (up to 8)
+    uint8_t dataLength; ///< Number of parameter bytes received
 };
 
 /**
@@ -72,11 +72,11 @@ enum class DxlVelocityProfile : uint8_t
  */
 struct DxlMovingStatus
 {
-    uint8_t raw;                    //< Raw register byte (address 123).
-    DxlVelocityProfile profileType; //< Active velocity profile type (bits [5:4]).
-    bool followingError;            //< True if position following error threshold exceeded (bit 3).
-    bool profileOngoing;            //< True if the velocity profile is still being executed (bit 1).
-    bool inPosition;                //< True if goal position has been reached (bit 0).
+    uint8_t raw;                    ///< Raw register byte (address 123).
+    DxlVelocityProfile profileType; ///< Active velocity profile type (bits [5:4]).
+    bool followingError;            ///< True if position following error threshold exceeded (bit 3).
+    bool profileOngoing;            ///< True if the velocity profile is still being executed (bit 1).
+    bool inPosition;                ///< True if goal position has been reached (bit 0).
 };
 
 /**
@@ -502,16 +502,16 @@ class DynamixelLL
     }
 
   private:
-    USART_TypeDef* _usart; //< USART peripheral
-    uint8_t _servoID;      //< Target servo ID
+    USART_TypeDef* _usart; ///< USART peripheral
+    uint8_t _servoID;      ///< Target servo ID
 
-    bool _sync = false;           //< Sync-broadcast mode active
-    uint8_t _numMotors = 1;       //< Number of motors in sync group
-    uint8_t* _motorIDs = nullptr; //< Motor IDs for sync group
+    bool _sync = false;           ///< Sync-broadcast mode active
+    uint8_t _numMotors = 1;       ///< Number of motors in sync group
+    uint8_t* _motorIDs = nullptr; ///< Motor IDs for sync group
 
-    uint8_t _error = 0; //< Last error byte received from a status packet.
+    uint8_t _error = 0; ///< Last error byte received from a status packet.
 
-    static void (*activityCb)(void); //< Optional TX/RX activity hook (shared across all instances).
+    static void (*activityCb)(void); ///< Optional TX/RX activity hook (shared across all instances).
 
     /**
      * @brief Transmit a raw byte packet over the USART (blocking, LL).

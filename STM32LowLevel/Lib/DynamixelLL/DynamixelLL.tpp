@@ -1,5 +1,8 @@
 #pragma once
 
+// Resolve class context for clangd
+#include "DynamixelLL.h"
+
 template <typename T>
 uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
 {
@@ -50,11 +53,15 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
         return 1u; // Return error when no valid status packet received
     }
     if (response.error != 0)
+    {
         LOG_WARN("DXL: read error 0x%02X\n", response.error);
+    }
 
     value = 0;
     for (uint8_t i = 0; i < response.dataLength; i++)
+    {
         value |= (T)(response.data[i]) << (8 * i);
+    }
 
     return response.error;
 }
@@ -71,7 +78,9 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
 
     uint8_t retError = 0;
     for (uint8_t i = 0; i < count; i++)
+    {
         values[i] = 0;
+    }
 
     // For each device, read its response.
     uint8_t received = 0;
@@ -96,7 +105,9 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
             if (ids[i] == response.id)
             {
                 for (uint8_t j = 0; j < response.dataLength; j++)
+                {
                     values[i] |= (T)(response.data[j]) << (8 * j);
+                }
                 break;
             }
         }
@@ -108,7 +119,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setOperatingMode(const uint8_t (&modes)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -126,15 +139,21 @@ template <uint8_t N>
 uint8_t DynamixelLL::setHomingOffset(const int32_t (&offsets)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         int32_t v = offsets[i];
         if (v > 1044479)
+        {
             v = 1044479;
+        }
         if (v < -1044479)
+        {
             v = -1044479;
+        }
         processed[i] = static_cast<uint32_t>(v);
     }
     return syncWrite(20, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -144,15 +163,21 @@ template <uint8_t N>
 uint8_t DynamixelLL::setHomingOffsetA(const float (&offsetAngles)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         int32_t v = static_cast<int32_t>(offsetAngles[i] / 0.088f);
         if (v > 1044479)
+        {
             v = 1044479;
+        }
         if (v < -1044479)
+        {
             v = -1044479;
+        }
         processed[i] = static_cast<uint32_t>(v);
     }
     return syncWrite(20, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -162,13 +187,17 @@ template <uint8_t N>
 uint8_t DynamixelLL::setGoalPositionPcm(const uint16_t (&goalPositions)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         uint32_t v = goalPositions[i];
         if (v > 4095u)
+        {
             v = 4095u;
+        }
         processed[i] = v;
     }
     return syncWrite(116, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -178,13 +207,17 @@ template <uint8_t N>
 uint8_t DynamixelLL::setGoalPositionAPcm(const float (&angleDegrees)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         uint32_t v = static_cast<uint32_t>(angleDegrees[i] / 0.088f);
         if (v > 4095u)
+        {
             v = 4095u;
+        }
         processed[i] = v;
     }
     return syncWrite(116, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -194,15 +227,21 @@ template <uint8_t N>
 uint8_t DynamixelLL::setGoalPositionEpcm(const int32_t (&extendedPositions)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         int32_t v = extendedPositions[i];
         if (v > 1048575)
+        {
             v = 1048575;
+        }
         if (v < -1048575)
+        {
             v = -1048575;
+        }
         processed[i] = static_cast<uint32_t>(v);
     }
     return syncWrite(116, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -212,10 +251,14 @@ template <uint8_t N>
 uint8_t DynamixelLL::setTorqueEnable(const bool (&enable)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
+    {
         processed[i] = enable[i] ? 1u : 0u;
+    }
     return syncWrite(64, 1, _motorIDs, processed, _numMotors) ? 0u : 1u;
 }
 
@@ -223,10 +266,14 @@ template <uint8_t N>
 uint8_t DynamixelLL::setLED(const bool (&enable)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
+    {
         processed[i] = enable[i] ? 1u : 0u;
+    }
     return syncWrite(65, 1, _motorIDs, processed, _numMotors) ? 0u : 1u;
 }
 
@@ -234,7 +281,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setStatusReturnLevel(const uint8_t (&levels)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -252,7 +301,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setID(const uint8_t (&newIDs)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -270,7 +321,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setBaudRate(const uint8_t (&baudRates)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -288,13 +341,17 @@ template <uint8_t N>
 uint8_t DynamixelLL::setReturnDelayTime(const uint8_t (&delayTimes)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         uint8_t v = delayTimes[i];
         if (v > 254u)
+        {
             v = 254u;
+        }
         processed[i] = v;
     }
     return syncWrite(9, 1, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -306,17 +363,25 @@ uint8_t DynamixelLL::setDriveMode(const bool (&torqueOnByGoalUpdate)[N],
                                   const bool (&reverseMode)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         uint8_t mode = 0;
         if (torqueOnByGoalUpdate[i])
+        {
             mode |= 0x08u;
+        }
         if (timeBasedProfile[i])
+        {
             mode |= 0x04u;
+        }
         if (reverseMode[i])
+        {
             mode |= 0x01u;
+        }
         processed[i] = mode;
     }
     return syncWrite(10, 1, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -326,7 +391,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setProfileVelocity(const uint32_t (&profileVelocity)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -342,7 +409,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::setProfileAcceleration(const uint32_t (&profileAcceleration)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
@@ -355,7 +424,9 @@ uint8_t DynamixelLL::setProfileAcceleration(const uint32_t (&profileAcceleration
         {
             uint32_t pv = 0;
             if (readRegister<uint32_t>(112u, pv, 4u) == 0 && pv > 0 && v > pv / 2)
+            {
                 v = pv / 2;
+            }
         }
         processed[i] = v;
     }
@@ -366,16 +437,22 @@ template <uint8_t N>
 uint8_t DynamixelLL::setGoalVelocityRpm(const float (&rpmValues)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     const float maxRPM = 30.0f;
     uint32_t processed[_numMotors];
     for (uint8_t i = 0; i < _numMotors; i++)
     {
         float rpm = rpmValues[i];
         if (rpm > maxRPM)
+        {
             rpm = maxRPM;
+        }
         if (rpm < -maxRPM)
+        {
             rpm = -maxRPM;
+        }
         processed[i] = static_cast<uint32_t>(static_cast<int16_t>(rpm / 0.229f));
     }
     return syncWrite(104, 4, _motorIDs, processed, _numMotors) ? 0u : 1u;
@@ -385,14 +462,22 @@ template <uint8_t N>
 uint8_t DynamixelLL::getPresentVelocityRpm(float (&rpms)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     int16_t temp[_numMotors];
     uint8_t err = syncRead(128, 4, _motorIDs, temp, _numMotors);
     if (err != 0)
+    {
         LOG_WARN("DXL: sync read present velocity error 0x%02X\n", err);
+    }
     else
+    {
         for (uint8_t i = 0; i < _numMotors; i++)
+        {
             rpms[i] = static_cast<float>(temp[i]) * 0.229f;
+        }
+    }
     return err;
 }
 
@@ -400,10 +485,14 @@ template <uint8_t N>
 uint8_t DynamixelLL::getPresentPosition(int32_t (&presentPositions)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint8_t err = syncRead(132, 4, _motorIDs, presentPositions, _numMotors);
     if (err != 0)
+    {
         LOG_WARN("DXL: sync read present position error 0x%02X\n", err);
+    }
     return err;
 }
 
@@ -411,10 +500,14 @@ template <uint8_t N>
 uint8_t DynamixelLL::getCurrentLoad(int16_t (&currentLoad)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint8_t err = syncRead(126, 2, _motorIDs, currentLoad, _numMotors);
     if (err != 0)
+    {
         LOG_WARN("DXL: sync read current load error 0x%02X\n", err);
+    }
     return err;
 }
 
@@ -422,7 +515,9 @@ template <uint8_t N>
 uint8_t DynamixelLL::getMovingStatus(DxlMovingStatus (&status)[N])
 {
     if (checkArraySize(N) != 0)
+    {
         return 1;
+    }
     uint8_t temp[_numMotors];
     uint8_t err = syncRead(123, 1, _motorIDs, temp, _numMotors);
     if (err != 0)

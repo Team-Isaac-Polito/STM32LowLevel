@@ -35,7 +35,9 @@ static void i2cBusRecovery(void)
 
         // Check if SDA (PB7) has been released
         if (LL_GPIO_IsInputPinSet(GPIOB, LL_GPIO_PIN_7))
+        {
             break;
+        }
     }
 
     // Generate a STOP condition: SCL high, then SDA high
@@ -61,8 +63,12 @@ static inline bool waitSet(volatile uint32_t* reg, uint32_t mask)
 {
     uint32_t count = I2C_TIMEOUT_LOOPS;
     while (!(*reg & mask))
+    {
         if (--count == 0U)
+        {
             return false;
+        }
+    }
     return true;
 }
 
@@ -70,8 +76,12 @@ static inline bool waitClear(volatile uint32_t* reg, uint32_t mask)
 {
     uint32_t count = I2C_TIMEOUT_LOOPS;
     while (*reg & mask)
+    {
         if (--count == 0U)
+        {
             return false;
+        }
+    }
     return true;
 }
 
@@ -92,7 +102,9 @@ static bool i2cReadReg(uint8_t addr, uint8_t reg, uint8_t* buf, uint8_t len)
     {
         i2cBusRecovery();
         if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+        {
             return false;
+        }
     }
 
     i2cClearErrors();
@@ -165,7 +177,9 @@ static bool i2cWriteReg(uint8_t addr, uint8_t reg, uint8_t val)
     {
         i2cBusRecovery();
         if (!waitClear(&I2C1->ISR, I2C_ISR_BUSY))
+        {
             return false;
+        }
     }
 
     i2cClearErrors();
@@ -239,7 +253,9 @@ bool IMU::checkID()
 {
     uint8_t id = 0;
     if (!readRegister(LSM6DSL_WHO_AM_I, id))
+    {
         return false;
+    }
     return (id == _addr);
 }
 
@@ -363,7 +379,9 @@ void IMU::updateFused()
     _lastFusedTick = now;
 
     if (dt <= 0.0f || dt > 1.0f)
+    {
         dt = 0.04f;
+    }
 
     _fusedPitch = _alpha * (_fusedPitch + gyroPitchRate * dt) + (1.0f - _alpha) * accelPitch;
     _fusedRoll = _alpha * (_fusedRoll + gyroRollRate * dt) + (1.0f - _alpha) * accelRoll;
