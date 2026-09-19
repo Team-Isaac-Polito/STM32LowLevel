@@ -30,6 +30,22 @@ Refer to [docs/getting-started.md](./docs/getting-started.md) for detailed envir
 
 **Prerequisites:** CMake ≥ 3.25 (required for workflows), Ninja, `arm-none-eabi-gcc`.
 
+### Clone
+
+Inside the folder where you want to keep your workspace, run:
+
+```bash
+git clone https://github.com/Team-Isaac-Polito/STM32LowLevel.git
+```
+
+Open the project in VS Code using the workspace file:
+
+```bash
+code STM32LowLevel
+```
+
+> **Note:** The `Custom Hover` extension loads `provideHover.cjs` from the workspace root. This file should be at the root of the repository, so open the workspace from the root folder, not the `STM32LowLevel` subfolder.
+
 ### Building & Flashing
 
 If you only want to compile the code without triggering the flashing tool:

@@ -67,8 +67,9 @@ Open VS Code and install the extensions below:
 
 - **CMake Tools** (`ms-vscode.cmake-tools`) — configure and build from the sidebar
 - **C/C++** (`ms-vscode.cpptools`) — provides IntelliSense and debugging support
-- **clangd** (`llvm-vs-code-extensions.vscode-clangd`) — **recommended** LSP for C/C++ with cross-compilation support
-- **STM32Cube for Visual Studio Code** (`STMicroelectronics.stm32cubeide-vscode`) — optional, for CubeMX integration
+- **clangd** (`llvm-vs-code-extensions.vscode-clangd`) — LSP for C/C++ with cross-compilation support
+- **STM32Cube for Visual Studio Code** (`STMicroelectronics.stm32cubeide-vscode`) — For CubeMX integration
+- **Custom Hover** (`jan-kretschmer.vs-code-custom-hover-extension`) — **optional**, compliments clangd with hover support for macros
 
 ### Clangd Configuration
 
@@ -85,7 +86,6 @@ Add to `.vscode/settings.json` in your workspace:
         "editor.formatOnSave": true
     },
     "C_Cpp.intelliSenseEngine": "disabled",
-    "C_Cpp.intelliSenseEngineFallback": "disabled",
     "clangd.arguments": [
         "--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe",
         "--background-index",
@@ -103,6 +103,7 @@ Add to `.vscode/settings.json` in your workspace:
 ```
 
 **Key points:**
+- `"editor.formatOnSave": true` — automatically formats code on save using clang-format
 - `"C_Cpp.intelliSenseEngine": "disabled"` — turns off default IntelliSense to avoid duplicate diagnostics
 - `"--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe"` — tells clangd where to find the cross-compiler binaries. First string is for WSL/Linux, second and third are for Windows (case-insensitive)
 - `--clang-tidy` — enables inline static analysis
