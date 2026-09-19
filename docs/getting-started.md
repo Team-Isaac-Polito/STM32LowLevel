@@ -18,100 +18,27 @@ You need five tools on your system before you can build. STM32CubeMX is optional
 
 ---
 
-## 1. Install CMake, Ninja, and Clangd
+## 1. Install CMake, Ninja, Clangd, and Arm GNU Toolchain
 
-Open a PowerShell and run:
+Open a PowerShell in the directory where you want to set up your development environment and run:
 ```powershell
-winget install Kitware.CMake
-winget install NinjaBuild.Ninja
-winget install LLVM.LLVM
+winget install -e --id Kitware.CMake
+winget install -e --id Ninja-build.Ninja
+winget install -e --id LLVM.LLVM
+winget install -e --id Arm.ArmGnuToolchain
 ```
 
 Use sudo if you are on Linux:
 ```bash
 sudo apt update
-sudo apt install -y cmake ninja-build clangd
+sudo apt install -y cmake ninja-build clangd gcc-arm-none-eabi
 ```
+
+After installation, close and reopen your terminal to ensure the new binaries are in your PATH.
 
 ---
 
-## 2. Install the Arm GNU Toolchain
-
-1. Download the **Windows (mingw-w64-i686) hosted** release from:
-   [developer.arm.com/downloads/-/arm-gnu-toolchain-downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
-   
-   Choose the `arm-none-eabi` variant (AArch32 bare-metal target), installer `.msi`.
-
-2. Run the installer.
-
-3. Add the toolchain's `bin` directory to your system PATH. By default, it is likely installed in:
-   ```
-   C:\Program Files (x86)\Arm\GNU Toolchain mingw-w64-i686-arm-none-eabi\bin
-   ```
-
-4. Verify:
-   ```
-   arm-none-eabi-gcc --version
-   ```
-
-on Linux, install via apt:
-```bash
-sudo apt install -y gcc-arm-none-eabi
-```
-
----
-
-## 3. Install VS Code Extensions
-
-Open VS Code and install the extensions below:
-
-- **CMake Tools** (`ms-vscode.cmake-tools`) — configure and build from the sidebar
-- **C/C++** (`ms-vscode.cpptools`) — provides IntelliSense and debugging support
-- **clangd** (`llvm-vs-code-extensions.vscode-clangd`) — LSP for C/C++ with cross-compilation support
-- **STM32Cube for Visual Studio Code** (`STMicroelectronics.stm32cubeide-vscode`) — For CubeMX integration
-- **Custom Hover** (`jan-kretschmer.vs-code-custom-hover-extension`) — **optional**, compliments clangd with hover support for macros
-
-### Clangd Configuration
-
-Add to `.vscode/settings.json` in your workspace:
-
-```json
-{
-    "[c]": {
-        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-        "editor.formatOnSave": true
-    },
-    "[cpp]": {
-        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
-        "editor.formatOnSave": true
-    },
-    "C_Cpp.intelliSenseEngine": "disabled",
-    "clangd.arguments": [
-        "--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe",
-        "--background-index",
-        "--clang-tidy",
-        "--completion-style=detailed",
-        "--header-insertion=iwyu",
-    ],
-    "files.associations": {
-        "*.h": "c",
-        "*.c": "c",
-        "*.cpp": "cpp",
-        "*.hpp": "cpp"
-    }
-}
-```
-
-**Key points:**
-- `"editor.formatOnSave": true` — automatically formats code on save using clang-format
-- `"C_Cpp.intelliSenseEngine": "disabled"` — turns off default IntelliSense to avoid duplicate diagnostics
-- `"--query-driver=**/*arm-none-eabi-g*,**/*AR*.EXE,**/*ar*.exe"` — tells clangd where to find the cross-compiler binaries. First string is for WSL/Linux, second and third are for Windows (case-insensitive)
-- `--clang-tidy` — enables inline static analysis
-- Run `cmake --preset MK2_MOD1` first to generate `compile_commands.json`. Then, reload window in VS Code. Clangd will automatically pick it up thanks to the `CompilationDatabase` flag in the `.clangd` file.
-
----
-
-## 4. Clone and Open the Project
+## 2. Clone and Open the Project
 
 ```powershell
 git clone https://github.com/Team-Isaac-Polito/STM32LowLevel.git
@@ -131,7 +58,60 @@ STM32LowLevel/          ← repo root
 
 ---
 
-## 5. Build & Flash Workflows
+## 3. Install VS Code Extensions
+
+Open VS Code and install the extensions below:
+
+- **CMake Tools** (`ms-vscode.cmake-tools`) — configure and build from the sidebar
+- **C/C++** (`ms-vscode.cpptools`) — provides IntelliSense and debugging support
+- **clangd** (`llvm-vs-code-extensions.vscode-clangd`) — LSP for C/C++ with cross-compilation support
+- **STM32Cube for Visual Studio Code** (`STMicroelectronics.stm32cubeide-vscode`) — For CubeMX integration
+- **Custom Hover** (`jan-kretschmer.vs-code-custom-hover-extension`) — **optional**, compliments clangd with hover support for macros
+
+> **Note:** The `Custom Hover` extension loads `provideHover.cjs` from the workspace root. This file should be at the root of the repository, so open the workspace from the root folder, not the `STM32LowLevel` subfolder.
+
+### Clangd Configuration
+
+Add to `.vscode/settings.json` in your workspace:
+
+```json
+{
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true
+    },
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "clangd.arguments": [
+        "--query-driver=**/*arm-none-eabi*",
+        "--background-index",
+        "--clang-tidy",
+        "--completion-style=detailed",
+        "--header-insertion=iwyu",
+    ],
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c",
+        "*.cpp": "cpp",
+        "*.hpp": "cpp"
+    }
+}
+```
+
+**Key points:**
+- `"editor.formatOnSave": true` — automatically formats code on save using clang-format
+- `"C_Cpp.intelliSenseEngine": "disabled"` — turns off default IntelliSense to avoid duplicate diagnostics
+- `"--query-driver=**/*arm-none-eabi*"` — tells clangd where to find the cross-compiler binaries.
+- `--clang-tidy` — enables inline static analysis
+
+Run `cmake --preset MK2_MOD1; cmake --build --preset MK2_MOD1` first to generate `compile_commands.json`. Then, reload window in VS Code. Clangd will automatically pick it up thanks to the `CompilationDatabase` flag in the `.clangd` file.
+
+---
+
+## 4. Build & Flash Workflows
 
 All commands run from inside `STM32LowLevel/STM32LowLevel/`.
 
@@ -179,7 +159,7 @@ The project supports the following target presets across debug, release, and aut
 
 ---
 
-## 6. Flashing
+## 5. Flashing
 
 Flashing is handled automatically via a custom script wrapper called by the `flash` target or workflow presets. On Windows hosts, the script automatically attempts a **WSL Fallback** if native Windows binaries for `dfu-util` are missing.
 
@@ -263,7 +243,7 @@ where:
 
 ---
 
-## 7. USB CDC Debug Output
+## 6. USB CDC Debug Output
 
 The firmware routes all debug output (`debug.log()`) to a USB CDC (Communications Device Class) Virtual COM Port. No external adapter is needed — just connect the board's USB FS port to your PC.
 
