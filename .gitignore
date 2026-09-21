@@ -18,7 +18,8 @@ mx.scratch
 !/.github/workflows/
 
 # IDE / editor config — never commit per-user workspace settings
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.swp
 *.swo
 *~
