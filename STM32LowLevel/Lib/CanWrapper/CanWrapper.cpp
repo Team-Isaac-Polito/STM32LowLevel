@@ -21,6 +21,11 @@ static constexpr uint32_t EXTID_MASK = 0x1FFFFFFFU; // bits[28:0]: extended ID
 static constexpr uint32_t DLC_MASK = 0x000F0000U;   // bits[19:16]: DLC in RX word 1
 static constexpr uint32_t DLC_SHIFT = 16U;
 
+// DLC code → byte count lookup
+static const uint8_t DLCtoBytes[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64
+};
+
 // Helper function to convert payload length (0-64 bytes) to FDCAN DLC code (0-15)
 static constexpr uint32_t length2DLC(uint8_t length)
 {
@@ -149,22 +154,24 @@ bool CanWrapper::readMessage(uint8_t* msgType, uint8_t* data)
     uint32_t extId = rxAddr[0] & EXTID_MASK;
     *msgType = static_cast<uint8_t>((extId >> 16) & 0xFFU);
 
-    // Word 1 (R1): bits[19:16] = DLC
+    // Word 1 (R1): bits[19:16] = DLC code (0–15)
     uint8_t dlc = static_cast<uint8_t>((rxAddr[1] & DLC_MASK) >> DLC_SHIFT);
-
     if (dlc > 15U)
     {
         dlc = 15U;
     }
 
+    // DLC code → actual byte count (non-linear for codes 9–15)
+    uint8_t numBytes = DLCtoBytes[dlc];
+
     // Words 2+: data bytes (little-endian in 32-bit words)
     uint8_t* payloadData = reinterpret_cast<uint8_t*>(&rxAddr[2]);
-    memcpy(data, payloadData, dlc);
+    memcpy(data, payloadData, numBytes);
 
     // Acknowledge RX FIFO0 (increment get index)
     FDCAN2->RXF0A = getIdx;
 
-    LOG_DEBUG("CAN RX: type=0x%02X len=%u\n", *msgType, dlc);
+    LOG_DEBUG("CAN RX: type=0x%02X len=%u\n", *msgType, numBytes);
 
     return true;
 }
