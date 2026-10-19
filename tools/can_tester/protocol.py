@@ -66,16 +66,6 @@ class MsgType(IntEnum):
     DATA_EE_HEAD_ROLL_FEEDBACK = 0x46
 
     # Robotic arm (MOD1 only)
-    ARM_PITCH_1a1b_SETPOINT = 0x51
-    ARM_PITCH_1a1b_FEEDBACK = 0x52
-    ARM_PITCH_2_SETPOINT = 0x53
-    ARM_PITCH_2_FEEDBACK = 0x54
-    ARM_ROLL_3_SETPOINT = 0x55
-    ARM_ROLL_3_FEEDBACK = 0x56
-    ARM_PITCH_4_SETPOINT = 0x57
-    ARM_PITCH_4_FEEDBACK = 0x58
-    ARM_ROLL_5_SETPOINT = 0x59
-    ARM_ROLL_5_FEEDBACK = 0x5A
     ARM_ROLL_6_SETPOINT = 0x5B
     ARM_ROLL_6_FEEDBACK = 0x5C
     RESET_ARM = 0x5D
@@ -96,12 +86,9 @@ class MsgType(IntEnum):
     LED_HP_BRIGHTNESS = 0x75
 
     # Arm velocity feedback
-    ARM_PITCH_1a1b_FEEDBACK_VEL = 0x80
-    ARM_PITCH_2_FEEDBACK_VEL = 0x81
-    ARM_ROLL_3_FEEDBACK_VEL = 0x82
-    ARM_PITCH_4_FEEDBACK_VEL = 0x83
-    ARM_ROLL_5_FEEDBACK_VEL = 0x84
     ARM_ROLL_6_FEEDBACK_VEL = 0x85
+    ARM_VELOCITY_SETPOINT = 0x86
+    ARM_VELOCITY_FEEDBACK = 0x88
 
     # IMU raw data (debug)
     IMU_RAW_ACCEL = 0x92
@@ -176,17 +163,10 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
     MsgType.JOINT_PITCH_FEEDBACK: PayloadFormat("<f", ["pitch"], "rad"),
     MsgType.JOINT_ROLL_FEEDBACK: PayloadFormat("<f", ["roll"], "rad"),
 
-    # Arm velocity setpoints / feedback (J1a, J1b, J2, J3, J4, J5 = velocity control, J6 beak = position control)
-    MsgType.ARM_PITCH_1a1b_SETPOINT: PayloadFormat("<ff", ["theta_vel", "phi_vel"], "rad/s"),
-    MsgType.ARM_PITCH_1a1b_FEEDBACK: PayloadFormat("<ff", ["theta", "phi"], "rad"),
-    MsgType.ARM_PITCH_2_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_PITCH_2_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_ROLL_3_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_ROLL_3_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_PITCH_4_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_PITCH_4_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
-    MsgType.ARM_ROLL_5_SETPOINT: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_ROLL_5_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
+    # Unified arm velocity command and feedback (J1 differential, J2, J3, J4, J5)
+    MsgType.ARM_VELOCITY_SETPOINT: PayloadFormat(
+        "<ffffff", ["base_pitch", "base_roll", "j2", "j3", "j4", "j5"], "rad/s"
+    ),
     MsgType.ARM_ROLL_6_SETPOINT: PayloadFormat("<i", ["command"], "0=close(PWM-limited hold),1=open"),
     MsgType.ARM_ROLL_6_FEEDBACK: PayloadFormat("<f", ["angle"], "rad"),
 
@@ -195,12 +175,9 @@ PAYLOAD_FORMATS: dict[int, PayloadFormat] = {
     MsgType.REBOOT_ARM: PayloadFormat("", [], ""),
     MsgType.SET_HOME: PayloadFormat("<i", ["persist"], "0=interim,1=permanent"),
 
-    # Arm velocity feedback
-    MsgType.ARM_PITCH_1a1b_FEEDBACK_VEL: PayloadFormat("<ff", ["theta_vel", "phi_vel"], "rad/s"),
-    MsgType.ARM_PITCH_2_FEEDBACK_VEL: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_ROLL_3_FEEDBACK_VEL: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_PITCH_4_FEEDBACK_VEL: PayloadFormat("<f", ["velocity"], "rad/s"),
-    MsgType.ARM_ROLL_5_FEEDBACK_VEL: PayloadFormat("<f", ["velocity"], "rad/s"),
+    MsgType.ARM_VELOCITY_FEEDBACK: PayloadFormat(
+        "<ffffff", ["base_pitch", "base_roll", "j2", "j3", "j4", "j5"], "rad/s"
+    ),
     MsgType.ARM_ROLL_6_FEEDBACK_VEL: PayloadFormat("<f", ["velocity"], "rad/s"),
 
     # Inter-module joints

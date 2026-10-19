@@ -113,11 +113,12 @@ def test_arm_joints(
     print(f"=== Arm joint test (velocity={velocity} rad/s) ===")
 
     joints = [
-        ("J1 (pitch 1a1b)", lambda v: sender.arm_pitch_1a1b(v, 0.0)),
-        ("J2 (elbow pitch)", sender.arm_pitch_j2),
-        ("J3 (roll)", sender.arm_roll_j3),
-        ("J4 (wrist pitch)", sender.arm_pitch_j4),
-        ("J5 (wrist roll)", sender.arm_roll_j5),
+        ("J1 differential pitch", lambda v: sender.arm_velocity(v, 0.0, 0.0, 0.0, 0.0, 0.0)),
+        ("J1 differential roll", lambda v: sender.arm_velocity(0.0, v, 0.0, 0.0, 0.0, 0.0)),
+        ("J2", lambda v: sender.arm_velocity(0.0, 0.0, v, 0.0, 0.0, 0.0)),
+        ("J3", lambda v: sender.arm_velocity(0.0, 0.0, 0.0, v, 0.0, 0.0)),
+        ("J4", lambda v: sender.arm_velocity(0.0, 0.0, 0.0, 0.0, v, 0.0)),
+        ("J5", lambda v: sender.arm_velocity(0.0, 0.0, 0.0, 0.0, 0.0, v)),
     ]
 
     for name, cmd in joints:
