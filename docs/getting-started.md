@@ -290,6 +290,7 @@ You can run the CI workflows locally using [act](https://github.com/nektos/act) 
 
 ```bash
 curl -s https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash
+sudo mv ./bin/act /usr/local/bin/
 ```
 
 Verify:
