@@ -56,6 +56,8 @@ cmake --workflow --preset MK2_MOD1-release-flash
 
 *Change MK2_MOD1 to MK2_MOD2 (Middle) or MK2_MOD3 (Tail) depending on your target board.*
 
+> **Note:** You must run the flashing commands such as `cmake --workflow --preset MK2_MOD3-flash` with sudo if you are using WSL. Without sudo, the WSL instance will not have permission to access the USB device.
+
 ---
 
 ## Contributing
