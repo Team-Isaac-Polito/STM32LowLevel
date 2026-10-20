@@ -489,29 +489,6 @@ extern "C" int main(void)
             LOG_WARN("[main] CAN timeout, motors stopped\n");
         }
 
-        // Periodic CAN bus health check (every 5 seconds)
-        {
-            static uint32_t lastCanHealthCheck = 0U;
-            if (now - lastCanHealthCheck >= 5000U)
-            {
-                lastCanHealthCheck = now;
-
-                // Check FDCAN Protocol Status Register for bus-off
-                uint32_t psr = hfdcan2.Instance->PSR;
-                uint32_t bo = (psr & FDCAN_PSR_BO_Msk) >> FDCAN_PSR_BO_Pos;
-
-                if (bo)
-                {
-                    LOG_WARN("[CAN] Bus-off detected in health check! Recovering...\n");
-                    // Clear the bus-off interrupt flag
-                    hfdcan2.Instance->IR = FDCAN_IR_BO;
-                    // Force recovery from bus-off by clearing INIT bit
-                    CLEAR_BIT(hfdcan2.Instance->CCCR, FDCAN_CCCR_INIT);
-                    canActive = false;
-                }
-            }
-        }
-
 #ifdef MODC_ARM
         // Beak gripper state machine
         tickBeakStateMachine(now);
