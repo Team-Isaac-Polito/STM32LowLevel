@@ -126,16 +126,16 @@ static IMU imu;
 // Arm Dynamixel motors (all on USART2 bus, position control)
 static DynamixelLL armBaseSync(USART2, 0);   // sync handle for J1a/J1b differential pair
 static DynamixelLL armMotionSync(USART2, 0); // sync handle for six-joint velocity messages
-static DynamixelLL armMot1a(USART2, SERVO_ARM_1a_PITCH_ID);
-static DynamixelLL armMot1b(USART2, SERVO_ARM_1b_PITCH_ID);
+static DynamixelLL armMot1a(USART2, SERVO_ARM_1A_PITCH_ID);
+static DynamixelLL armMot1b(USART2, SERVO_ARM_1B_PITCH_ID);
 static DynamixelLL armMot2(USART2, SERVO_ARM_2_PITCH_ID);
 static DynamixelLL armMot3(USART2, SERVO_ARM_3_ROLL_ID);
 static DynamixelLL armMot4(USART2, SERVO_ARM_4_PITCH_ID);
 static DynamixelLL armMot5(USART2, SERVO_ARM_5_ROLL_ID);
 static DynamixelLL armMot6(USART2, SERVO_ARM_6_BEAK_ID);
-static const uint8_t armBaseMotorIds[] = {SERVO_ARM_1a_PITCH_ID, SERVO_ARM_1b_PITCH_ID};
-static const uint8_t armMotionMotorIds[] = {SERVO_ARM_1a_PITCH_ID,
-                                            SERVO_ARM_1b_PITCH_ID,
+static const uint8_t armBaseMotorIds[] = {SERVO_ARM_1A_PITCH_ID, SERVO_ARM_1B_PITCH_ID};
+static const uint8_t armMotionMotorIds[] = {SERVO_ARM_1A_PITCH_ID,
+                                            SERVO_ARM_1B_PITCH_ID,
                                             SERVO_ARM_2_PITCH_ID,
                                             SERVO_ARM_3_ROLL_ID,
                                             SERVO_ARM_4_PITCH_ID,
@@ -1137,12 +1137,12 @@ static void DXL_JOINT_INIT(void)
     // jointMot2.setOperatingMode(4U);
     HAL_Delay(10U);
 
-    jointMot1L.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    jointMot1L.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    jointMot1R.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    jointMot1R.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    // jointMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    // jointMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    jointMot1L.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    jointMot1L.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
+    jointMot1R.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    jointMot1R.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
+    // jointMot2.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    // jointMot2.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
     HAL_Delay(10U);
 
     // Enable torque
@@ -1272,7 +1272,7 @@ static void sendFeedback(void)
         ((float)((jointPosf1a1b[0] - jointPos0Mot1Lr[0]) - (jointPosf1a1b[1] - jointPos0Mot1Lr[1])) / 2.0f) *
         DXL_TO_RAD;
     float joint1a1bFb[2] = {jointTheta, jointPhi};
-    canW.sendMessage(JOINT_PITCH_1a1b_FEEDBACK, joint1a1bFb, 8U);
+    canW.sendMessage(JOINT_PITCH_1A1B_FEEDBACK, joint1a1bFb, 8U);
 
     int32_t jointPosf2;
     jointMot2.getPresentPosition(jointPosf2);
@@ -1420,7 +1420,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 #endif // MODC_ARM
 
 #ifdef MODC_JOINT // Inter-module joint — MODC_JOINT modules only
-        case JOINT_PITCH_1a1b_SETPOINT:
+        case JOINT_PITCH_1A1B_SETPOINT:
         {
             float theta, phi;
             memcpy(&theta, msgData, 4);

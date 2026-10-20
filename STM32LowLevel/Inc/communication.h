@@ -43,8 +43,8 @@
 #define SET_HOME 0x5F            ///< Save home pos — Int32: 0=session, 1=Flash
 
 // Inter-module joint — MK2 MOD2 and MOD3 (0x6X)
-#define JOINT_PITCH_1a1b_SETPOINT 0x61 ///< Joint differential pitch/yaw setpoint — Float×2, rad
-#define JOINT_PITCH_1a1b_FEEDBACK 0x62 ///< Joint differential pitch/yaw feedback — Float×2, rad
+#define JOINT_PITCH_1A1B_SETPOINT 0x61 ///< Joint differential pitch/yaw setpoint — Float×2, rad
+#define JOINT_PITCH_1A1B_FEEDBACK 0x62 ///< Joint differential pitch/yaw feedback — Float×2, rad
 #define JOINT_ROLL_2_SETPOINT 0x63     ///< Joint roll setpoint — Float, rad
 #define JOINT_ROLL_2_FEEDBACK 0x64     ///< Joint roll feedback — Float, rad
 
