@@ -54,7 +54,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
-// Beak gripper state (MODC_ARM only).
+// Beak gripper state (MODC_ARM only)
 enum class BeakState : uint8_t
 {
     IDLE,     ///< No active command, motor at last known position
@@ -124,15 +124,22 @@ static IMU imu;
 
 #ifdef MODC_ARM
 // Arm Dynamixel motors (all on USART2 bus, position control)
-static DynamixelLL armDxl(USART2, 0); // sync handle for J1a/J1b
-static DynamixelLL armMot1a(USART2, SERVO_ARM_1a_PITCH_ID);
-static DynamixelLL armMot1b(USART2, SERVO_ARM_1b_PITCH_ID);
+static DynamixelLL armBaseSync(USART2, 0);   // sync handle for J1a/J1b differential pair
+static DynamixelLL armMotionSync(USART2, 0); // sync handle for six-joint velocity messages
+static DynamixelLL armMot1a(USART2, SERVO_ARM_1A_PITCH_ID);
+static DynamixelLL armMot1b(USART2, SERVO_ARM_1B_PITCH_ID);
 static DynamixelLL armMot2(USART2, SERVO_ARM_2_PITCH_ID);
 static DynamixelLL armMot3(USART2, SERVO_ARM_3_ROLL_ID);
 static DynamixelLL armMot4(USART2, SERVO_ARM_4_PITCH_ID);
 static DynamixelLL armMot5(USART2, SERVO_ARM_5_ROLL_ID);
 static DynamixelLL armMot6(USART2, SERVO_ARM_6_BEAK_ID);
-static const uint8_t armIds[] = {SERVO_ARM_1a_PITCH_ID, SERVO_ARM_1b_PITCH_ID};
+static const uint8_t armBaseMotorIds[] = {SERVO_ARM_1A_PITCH_ID, SERVO_ARM_1B_PITCH_ID};
+static const uint8_t armMotionMotorIds[] = {SERVO_ARM_1A_PITCH_ID,
+                                            SERVO_ARM_1B_PITCH_ID,
+                                            SERVO_ARM_2_PITCH_ID,
+                                            SERVO_ARM_3_ROLL_ID,
+                                            SERVO_ARM_4_PITCH_ID,
+                                            SERVO_ARM_5_ROLL_ID};
 
 // Arm home positions (DXL ext-pos units) — default from definitions.h ARM_DEFAULT_HOME
 static const int32_t armDefaults[] = ARM_DEFAULT_HOME;
@@ -143,19 +150,12 @@ static int32_t armPos0Mot4 = armDefaults[4];
 static int32_t armPos0Mot5 = armDefaults[5];
 static int32_t armPos0Mot6 = armDefaults[6];
 
-// Arm live setpoint state
-static int32_t armPosMot1Lr[2] = {0, 0};
-static int32_t armOldPosMot1Lr[2] = {0, 0};
-static int32_t armPosMot2 = 0, armOldPosMot2 = 0;
-static int32_t armPosMot3 = 0, armOldPosMot3 = 0;
-static int32_t armPosMot4 = 0, armOldPosMot4 = 0;
-static int32_t armPosMot5 = 0, armOldPosMot5 = 0;
-
 // Beak gripper state
 static BeakState beakState = BeakState::IDLE;
 static uint32_t beakMotionStartMs = 0U;
 static uint32_t beakTempCheckMs = 0U; ///< Timestamp of last thermal check in HOLDING
-#endif
+
+#endif // MODC_ARM
 
 #ifdef MODC_JOINT
 // Joint Dynamixel motors (USART2 bus)
@@ -193,6 +193,7 @@ static void dxlArmInit(void);
 static bool loadHomePositions(void);
 static bool saveHomePositions(void);
 static void tickBeakStateMachine(uint32_t now);
+static void homeArm(void);
 #endif
 #ifdef MODC_ARM
 static void ledHpInit(void);
@@ -466,7 +467,7 @@ extern "C" int main(void)
 
         // Receive CAN setpoint
         uint8_t msgId;
-        uint8_t msgData[8];
+        uint8_t msgData[64];
         if (canW.readMessage(&msgId, msgData))
         {
             timeData = now;
@@ -799,7 +800,8 @@ static void dxlArmInit(void)
     HAL_Delay(10U);
 
     // Register J1a/J1b as sync group for differential control
-    armDxl.enableSync(armIds, sizeof(armIds));
+    armBaseSync.enableSync(armBaseMotorIds, sizeof(armBaseMotorIds));
+    armMotionSync.enableSync(armMotionMotorIds, sizeof(armMotionMotorIds));
 
     // Drive mode: all arms — normal mode (no reverseMode, no time-based profile)
     armMot1a.setDriveMode(false, false, false);
@@ -809,37 +811,31 @@ static void dxlArmInit(void)
     armMot4.setDriveMode(false, false, false);
     armMot5.setDriveMode(false, false, false);
     armMot6.setDriveMode(false, false, false);
+    HAL_Delay(10U);
 
-    // Operating mode 4 = Extended Position Control Mode
-    armDxl.setOperatingMode(4U);
-    armMot2.setOperatingMode(4U);
-    armMot3.setOperatingMode(4U);
-    armMot4.setOperatingMode(4U);
-    armMot5.setOperatingMode(4U);
+    // Operating mode: J1a, J1b, J2, J3, J4, J5 = velocity control (mode 1)
+    // J6 (beak) remains in extended position control (mode 4)
+    armBaseSync.setOperatingMode(1U);
+    armMot2.setOperatingMode(1U);
+    armMot3.setOperatingMode(1U);
+    armMot4.setOperatingMode(1U);
+    armMot5.setOperatingMode(1U);
     armMot6.setOperatingMode(4U);
     HAL_Delay(10U);
 
-    // Smooth motion profiles
-    armMot1a.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot1a.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot1b.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot1b.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot3.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot3.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot4.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot4.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot5.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot5.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    armMot6.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    armMot6.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    // Velocity profile: 0 = instant response (no acceleration ramping)
+    armMot1a.setProfileAcceleration(0U);
+    armMot1b.setProfileAcceleration(0U);
+    armMot2.setProfileAcceleration(0U);
+    armMot3.setProfileAcceleration(0U);
+    armMot4.setProfileAcceleration(0U);
+    armMot5.setProfileAcceleration(0U);
     HAL_Delay(10U);
 
-    // Read current positions before enabling torque to prevent violent startup motion
+    // Read current positions for reference (needed for velocity initialization)
     int32_t cur1Lr[2];
     int32_t cur2, cur3, cur4, cur5, cur6;
-    bool ok = armDxl.getPresentPosition(cur1Lr) == 0 && armMot2.getPresentPosition(cur2) == 0 &&
+    bool ok = armBaseSync.getPresentPosition(cur1Lr) == 0 && armMot2.getPresentPosition(cur2) == 0 &&
               armMot3.getPresentPosition(cur3) == 0 && armMot4.getPresentPosition(cur4) == 0 &&
               armMot5.getPresentPosition(cur5) == 0 && armMot6.getPresentPosition(cur6) == 0;
 
@@ -849,16 +845,20 @@ static void dxlArmInit(void)
         return;
     }
 
-    // Pre-load goal = current so motors hold position when torque enables
-    armDxl.setGoalPositionEpcm(cur1Lr);
-    armMot2.setGoalPositionEpcm(cur2);
-    armMot3.setGoalPositionEpcm(cur3);
-    armMot4.setGoalPositionEpcm(cur4);
-    armMot5.setGoalPositionEpcm(cur5);
-    armMot6.setGoalPositionEpcm(cur6);
+    // Send zero velocity to all arm joints (J1a-J5) BEFORE enabling torque
+    // In velocity control mode, zero velocity = hold current position
+    {
+        float zeroVel1Lr[2] = {0.0f, 0.0f};
+        armBaseSync.setGoalVelocityRpm(zeroVel1Lr);
+    }
+    armMot2.setGoalVelocityRpm(0.0f);
+    armMot3.setGoalVelocityRpm(0.0f);
+    armMot4.setGoalVelocityRpm(0.0f);
+    armMot5.setGoalVelocityRpm(0.0f);
+    armMot6.setGoalPWM(0); // Beak in position mode needs zero PWM to hold
     HAL_Delay(10U);
 
-    // Enable torque — motors stay in place since goal ≈ current
+    // Enable torque — motors will hold current position via velocity control
     armMot1a.setTorqueEnable(true);
     armMot1b.setTorqueEnable(true);
     armMot2.setTorqueEnable(true);
@@ -878,14 +878,13 @@ static void dxlArmInit(void)
     armPos0Mot6 = armDefaults[6];
     (void)loadHomePositions();
 
-    // Move to home position via profile velocity
-    armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
-    armMot2.setGoalPositionEpcm(armPos0Mot2);
-    armMot3.setGoalPositionEpcm(armPos0Mot3);
-    armMot4.setGoalPositionEpcm(armPos0Mot4);
-    armMot5.setGoalPositionEpcm(armPos0Mot5);
+    // J6 (beak) uses position control - set to home position
     armMot6.setGoalPositionEpcm(armPos0Mot6);
-    LOG_INFO("[ARM_INIT] Arm DXL initialised — moving to home\n");
+
+    // Home arm to calibrated positions
+    homeArm();
+
+    LOG_INFO("[ARM_INIT] Arm DXL initialised\n");
 }
 
 /**
@@ -992,6 +991,75 @@ static void tickBeakStateMachine(uint32_t now)
 
 #ifdef MODC_ARM
 /**
+ * Home the arm to calibrated positions.
+ * This is a blocking function that waits for homing to complete.
+ * Uses velocity control to move each joint toward its home position.
+ */
+static void homeArm(void)
+{
+    constexpr uint32_t HOME_TIMEOUT_MS = 5000U;
+
+    auto stopArm = []() {
+        armMot1a.setGoalVelocityRpm(0.0f);
+        armMot1b.setGoalVelocityRpm(0.0f);
+        armMot2.setGoalVelocityRpm(0.0f);
+        armMot3.setGoalVelocityRpm(0.0f);
+        armMot4.setGoalVelocityRpm(0.0f);
+        armMot5.setGoalVelocityRpm(0.0f);
+    };
+
+    LOG_INFO("[ARM_HOME] Starting closed-loop homing\n");
+    const uint32_t startMs = HAL_GetTick();
+
+    while (HAL_GetTick() - startMs < HOME_TIMEOUT_MS)
+    {
+        int32_t currentJ1[2], currentJ2, currentJ3, currentJ4, currentJ5;
+        if (armBaseSync.getPresentPosition(currentJ1) != 0 || armMot2.getPresentPosition(currentJ2) != 0 ||
+            armMot3.getPresentPosition(currentJ3) != 0 || armMot4.getPresentPosition(currentJ4) != 0 ||
+            armMot5.getPresentPosition(currentJ5) != 0)
+        {
+            stopArm();
+            LOG_WARN("[ARM_HOME] Position read failed; velocities stopped\n");
+            return;
+        }
+
+        const int32_t errorJ1a = armPos0Mot1Lr[0] - currentJ1[0];
+        const int32_t errorJ1b = armPos0Mot1Lr[1] - currentJ1[1];
+        const int32_t errorJ2 = armPos0Mot2 - currentJ2;
+        const int32_t errorJ3 = armPos0Mot3 - currentJ3;
+        const int32_t errorJ4 = armPos0Mot4 - currentJ4;
+        const int32_t errorJ5 = armPos0Mot5 - currentJ5;
+
+        const bool j1aDone = abs(errorJ1a) <= ARM_HOME_POS_TOLERANCE;
+        const bool j1bDone = abs(errorJ1b) <= ARM_HOME_POS_TOLERANCE;
+        const bool j2Done = abs(errorJ2) <= ARM_HOME_POS_TOLERANCE;
+        const bool j3Done = abs(errorJ3) <= ARM_HOME_POS_TOLERANCE;
+        const bool j4Done = abs(errorJ4) <= ARM_HOME_POS_TOLERANCE;
+        const bool j5Done = abs(errorJ5) <= ARM_HOME_POS_TOLERANCE;
+
+        armMot1a.setGoalVelocityRpm(j1aDone ? 0.0f : errorJ1a * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+        armMot1b.setGoalVelocityRpm(j1bDone ? 0.0f : errorJ1b * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+        armMot2.setGoalVelocityRpm(j2Done ? 0.0f : errorJ2 * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+        armMot3.setGoalVelocityRpm(j3Done ? 0.0f : errorJ3 * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+        armMot4.setGoalVelocityRpm(j4Done ? 0.0f : errorJ4 * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+        armMot5.setGoalVelocityRpm(j5Done ? 0.0f : errorJ5 * DXL_TO_RAD / ARM_HOME_TIME_SEC / DXL_RPM_TO_RAD_S);
+
+        if (j1aDone && j1bDone && j2Done && j3Done && j4Done && j5Done)
+        {
+            stopArm();
+            LOG_INFO("[ARM_HOME] Homing complete\n");
+            return;
+        }
+        HAL_Delay(20U);
+    }
+
+    stopArm();
+    LOG_WARN("[ARM_HOME] Homing timeout; velocities stopped\n");
+}
+#endif // MODC_ARM
+
+#ifdef MODC_ARM
+/**
  * Initialise LED HP board PWM control on TIM2_CH4 (PA3).
  * PWM frequency ~10 kHz for flicker-free dimming.
  */
@@ -1069,12 +1137,12 @@ static void DXL_JOINT_INIT(void)
     // jointMot2.setOperatingMode(4U);
     HAL_Delay(10U);
 
-    jointMot1L.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    jointMot1L.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    jointMot1R.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    jointMot1R.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
-    // jointMot2.setProfileVelocity(ARM_PROFILE_VELOCITY);
-    // jointMot2.setProfileAcceleration(ARM_PROFILE_ACCELERATION);
+    jointMot1L.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    jointMot1L.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
+    jointMot1R.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    jointMot1R.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
+    // jointMot2.setProfileVelocity(JOINT_PROFILE_VELOCITY);
+    // jointMot2.setProfileAcceleration(JOINT_PROFILE_ACCELERATION);
     HAL_Delay(10U);
 
     // Enable torque
@@ -1146,65 +1214,17 @@ static void sendFeedback(void)
 #ifdef MODC_ARM
     static constexpr float RPM_TO_RADS = 2.0f * 3.14159265f / 60.0f;
 
-    // Position feedback — delta from home, converted to radians
-    int32_t posf1a1b[2];
-    armDxl.getPresentPosition(posf1a1b);
-    // slot[0]=phi(negated), slot[1]=theta
-    float armPhi = -(float)(((posf1a1b[0] - armPos0Mot1Lr[0]) + (posf1a1b[1] - armPos0Mot1Lr[1])) / 2.0f) * DXL_TO_RAD;
-    float armTheta = (float)(((posf1a1b[1] - armPos0Mot1Lr[1]) - (posf1a1b[0] - armPos0Mot1Lr[0])) / 2.0f) * DXL_TO_RAD;
-    float arm1a1bFb[2] = {armTheta, armPhi};
-    canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK, arm1a1bFb, 8U);
-
-    int32_t posf;
-    float posfRad;
-    armMot2.getPresentPosition(posf);
-    posfRad = (float)(posf - armPos0Mot2) * DXL_TO_RAD;
-    canW.sendMessage(ARM_PITCH_2_FEEDBACK, &posfRad, 4U);
-
-    armMot3.getPresentPosition(posf);
-    posfRad = (float)(posf - armPos0Mot3) * DXL_TO_RAD;
-    canW.sendMessage(ARM_ROLL_3_FEEDBACK, &posfRad, 4U);
-
-    armMot4.getPresentPosition(posf);
-    posfRad = (float)(posf - armPos0Mot4) * DXL_TO_RAD;
-    canW.sendMessage(ARM_PITCH_4_FEEDBACK, &posfRad, 4U);
-
-    armMot5.getPresentPosition(posf);
-    posfRad = (float)(posf - armPos0Mot5) * DXL_TO_RAD;
-    canW.sendMessage(ARM_ROLL_5_FEEDBACK, &posfRad, 4U);
-
-    armMot6.getPresentPosition(posf);
-    posfRad = (float)(posf - armPos0Mot6) * DXL_TO_RAD;
-    canW.sendMessage(ARM_ROLL_6_FEEDBACK, &posfRad, 4U);
-
-    // Velocity feedback (RPM → rad/s), same differential convention as position
-    float vel1a1b[2] = {0.0f, 0.0f};
-    armDxl.getPresentVelocityRpm(vel1a1b);
-    float armPhiVel = -((vel1a1b[0] + vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
-    float armThetaVel = ((vel1a1b[0] - vel1a1b[1]) / 2.0f) * RPM_TO_RADS;
-    float arm1a1bVel[2] = {armThetaVel, armPhiVel};
-    canW.sendMessage(ARM_PITCH_1a1b_FEEDBACK_VEL, arm1a1bVel, 8U);
-
-    float vel;
-    armMot2.getPresentVelocityRpm(vel);
-    vel *= RPM_TO_RADS;
-    canW.sendMessage(ARM_PITCH_2_FEEDBACK_VEL, &vel, 4U);
-
-    armMot3.getPresentVelocityRpm(vel);
-    vel *= RPM_TO_RADS;
-    canW.sendMessage(ARM_ROLL_3_FEEDBACK_VEL, &vel, 4U);
-
-    armMot4.getPresentVelocityRpm(vel);
-    vel *= RPM_TO_RADS;
-    canW.sendMessage(ARM_PITCH_4_FEEDBACK_VEL, &vel, 4U);
-
-    armMot5.getPresentVelocityRpm(vel);
-    vel *= RPM_TO_RADS;
-    canW.sendMessage(ARM_ROLL_5_FEEDBACK_VEL, &vel, 4U);
-
-    armMot6.getPresentVelocityRpm(vel);
-    vel *= RPM_TO_RADS;
-    canW.sendMessage(ARM_ROLL_6_FEEDBACK_VEL, &vel, 4U);
+    // Unified arm velocity feedback: J1a, J1b, J2, J3, J4, J5.
+    float armVelocityRpm[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    armMotionSync.getPresentVelocityRpm(armVelocityRpm);
+    float armVelocity[6];
+    for (uint8_t i = 0U; i < 6U; ++i)
+    {
+        armVelocity[i] = armVelocityRpm[i] * RPM_TO_RADS;
+    }
+    armVelocity[4] = -armVelocity[4];
+    armVelocity[5] = -armVelocity[5];
+    canW.sendMessage(ARM_VELOCITY_FEEDBACK, armVelocity, sizeof(armVelocity));
 
     // Hardware error status
     uint8_t errArm[7] = {0U, 0U, 0U, 0U, 0U, 0U, 0U};
@@ -1252,7 +1272,7 @@ static void sendFeedback(void)
         ((float)((jointPosf1a1b[0] - jointPos0Mot1Lr[0]) - (jointPosf1a1b[1] - jointPos0Mot1Lr[1])) / 2.0f) *
         DXL_TO_RAD;
     float joint1a1bFb[2] = {jointTheta, jointPhi};
-    canW.sendMessage(JOINT_PITCH_1a1b_FEEDBACK, joint1a1bFb, 8U);
+    canW.sendMessage(JOINT_PITCH_1A1B_FEEDBACK, joint1a1bFb, 8U);
 
     int32_t jointPosf2;
     jointMot2.getPresentPosition(jointPosf2);
@@ -1275,8 +1295,8 @@ static void sendFeedback(void)
 
 /**
  * Dispatch incoming CAN setpoint message. Populated fully in Issue #11.
- * @param msg_id   CAN message type identifier (bits[23:16] of extended ID).
- * @param msgData 8-byte payload.
+ * @param msgId     CAN message type identifier (bits[23:16] of extended ID).
+ * @param msgData   CAN-FD payload.
  */
 static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 {
@@ -1301,75 +1321,21 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             break;
         }
 
-#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only
-        case ARM_PITCH_1a1b_SETPOINT:
+#ifdef MODC_ARM // Robotic arm — MODC_ARM modules only (J1a, J1b, J2, J3, J4, J5 = velocity control, J6 beak = position control)
+        case ARM_VELOCITY_SETPOINT:
         {
-            float theta, phi;
-            memcpy(&theta, msgData, 4);
-            memcpy(&phi, msgData + 4, 4);
+            float jointVelocity[6];
+            memcpy(jointVelocity, msgData, sizeof(jointVelocity));
 
-            armPosMot1Lr[0] = (int32_t)(-(theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[0];
-            armPosMot1Lr[1] = (int32_t)((theta * RAD_TO_DXL) - (phi * RAD_TO_DXL)) + armPos0Mot1Lr[1];
-
-            if ((abs(armPosMot1Lr[0] - armOldPosMot1Lr[0]) > ARM_DE_CAN_DXL) ||
-                (abs(armPosMot1Lr[1] - armOldPosMot1Lr[1]) > ARM_DE_CAN_DXL))
-            {
-                armDxl.setGoalPositionEpcm(armPosMot1Lr);
-                armOldPosMot1Lr[0] = armPosMot1Lr[0];
-                armOldPosMot1Lr[1] = armPosMot1Lr[1];
-            }
-            break;
-        }
-
-        case ARM_PITCH_2_SETPOINT:
-        {
-            float val;
-            memcpy(&val, msgData, 4);
-            armPosMot2 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot2;
-            if (abs(armPosMot2 - armOldPosMot2) > ARM_DE_CAN_DXL)
-            {
-                armMot2.setGoalPositionEpcm(armPosMot2);
-                armOldPosMot2 = armPosMot2;
-            }
-            break;
-        }
-
-        case ARM_ROLL_3_SETPOINT:
-        {
-            float val;
-            memcpy(&val, msgData, 4);
-            armPosMot3 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot3;
-            if (abs(armPosMot3 - armOldPosMot3) > ARM_DE_CAN_DXL)
-            {
-                armMot3.setGoalPositionEpcm(armPosMot3);
-                armOldPosMot3 = armPosMot3;
-            }
-            break;
-        }
-
-        case ARM_PITCH_4_SETPOINT:
-        {
-            float val;
-            memcpy(&val, msgData, 4);
-            armPosMot4 = (int32_t)(val * RAD_TO_DXL) + armPos0Mot4;
-            if (abs(armPosMot4 - armOldPosMot4) > ARM_DE_CAN_DXL)
-            {
-                armMot4.setGoalPositionEpcm(armPosMot4);
-                armOldPosMot4 = armPosMot4;
-            }
-            break;
-        }
-
-        case ARM_ROLL_5_SETPOINT:
-        {
-            float val;
-            memcpy(&val, msgData, 4);
-            armPosMot5 = armPos0Mot5 + (int32_t)(val * RAD_TO_DXL);
-            if (abs(armPosMot5 - armOldPosMot5) > ARM_DE_CAN_DXL)
-            {
-                armMot5.setGoalPositionEpcm(armPosMot5);
-                armOldPosMot5 = armPosMot5;
-            }
+            // The first two values are the differential base joints. Convert
+            // them to the two physical motor velocities before the sync write.
+            float armVelocityRpm[6] = {-(jointVelocity[0] + jointVelocity[1]) / DXL_RPM_TO_RAD_S,
+                                       (jointVelocity[0] - jointVelocity[1]) / DXL_RPM_TO_RAD_S,
+                                       jointVelocity[2] / DXL_RPM_TO_RAD_S,
+                                       jointVelocity[3] / DXL_RPM_TO_RAD_S,
+                                       -jointVelocity[4] / DXL_RPM_TO_RAD_S,
+                                       -jointVelocity[5] / DXL_RPM_TO_RAD_S};
+            armMotionSync.setGoalVelocityRpm(armVelocityRpm);
             break;
         }
 
@@ -1407,22 +1373,9 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 
         case RESET_ARM:
         {
-            // Move all joints to home position
-            armDxl.setGoalPositionEpcm(armPos0Mot1Lr);
-            armMot2.setGoalPositionEpcm(armPos0Mot2);
-            armMot3.setGoalPositionEpcm(armPos0Mot3);
-            armMot4.setGoalPositionEpcm(armPos0Mot4);
-            armMot5.setGoalPositionEpcm(armPos0Mot5);
-            armMot6.setGoalPWM(BEAK_FULL_PWM);
-            armMot6.setGoalPositionEpcm(armPos0Mot6);
-            beakState = BeakState::IDLE;
-            armOldPosMot1Lr[0] = armPos0Mot1Lr[0];
-            armOldPosMot1Lr[1] = armPos0Mot1Lr[1];
-            armOldPosMot2 = armPos0Mot2;
-            armOldPosMot3 = armPos0Mot3;
-            armOldPosMot4 = armPos0Mot4;
-            armOldPosMot5 = armPos0Mot5;
-            LOG_INFO("[CAN] RESET_ARM: moving to home\n");
+            // Home arm to calibrated positions (blocking)
+            homeArm();
+            LOG_INFO("[CAN] RESET_ARM: homing complete\n");
             break;
         }
 
@@ -1447,19 +1400,12 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         case SET_HOME:
         {
             // msgData[0]: 0 = session only, 1 = persist to Flash
-            armDxl.getPresentPosition(armPos0Mot1Lr);
+            armBaseSync.getPresentPosition(armPos0Mot1Lr);
             armMot2.getPresentPosition(armPos0Mot2);
             armMot3.getPresentPosition(armPos0Mot3);
             armMot4.getPresentPosition(armPos0Mot4);
             armMot5.getPresentPosition(armPos0Mot5);
             armMot6.getPresentPosition(armPos0Mot6);
-
-            armOldPosMot1Lr[0] = armPos0Mot1Lr[0];
-            armOldPosMot1Lr[1] = armPos0Mot1Lr[1];
-            armOldPosMot2 = armPos0Mot2;
-            armOldPosMot3 = armPos0Mot3;
-            armOldPosMot4 = armPos0Mot4;
-            armOldPosMot5 = armPos0Mot5;
 
             if (msgData[0] == 1U)
             {
@@ -1474,7 +1420,7 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
 #endif // MODC_ARM
 
 #ifdef MODC_JOINT // Inter-module joint — MODC_JOINT modules only
-        case JOINT_PITCH_1a1b_SETPOINT:
+        case JOINT_PITCH_1A1B_SETPOINT:
         {
             float theta, phi;
             memcpy(&theta, msgData, 4);

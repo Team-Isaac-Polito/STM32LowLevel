@@ -9,13 +9,10 @@ Usage:
 
 Commands:
     send traction <left_rpm> <right_rpm>    Set traction motor speeds
-    send arm_j2 <angle_rad>                 Set arm elbow pitch
-    send arm_j3 <angle_rad>                 Set arm roll J3
-    send arm_j4 <angle_rad>                 Set arm wrist pitch
-    send arm_j5 <angle_rad>                 Set arm wrist roll
-    send arm_1a1b <theta> <phi>             Set arm differential J1
-    send beak open|close                    Control beak gripper
-    send reset_arm                          Move arm to home position
+    send arm_velocity <base_pitch> <base_roll> <j2> <j3> <j4> <j5>
+                                             Set differential J1 and J2-J5 velocities (rad/s)
+    send beak open|close                    Control beak gripper (position control)
+    send reset_arm                          Move arm to home position (velocity mode)
     send set_home [permanent]               Set current position as home (default: interim)
     send reboot_arm                         Reboot arm motors
     send reboot_traction                    Reboot traction motors
@@ -149,30 +146,10 @@ class CLI:
             self.sender.traction(left, right, self.target)
             print(f"Traction: left={left} RPM, right={right} RPM")
 
-        elif subcmd == "arm_1a1b" and len(args) == 3:
-            theta, phi = float(args[1]), float(args[2])
-            self.sender.arm_pitch_1a1b(theta, phi)
-            print(f"Arm J1 differential: θ={theta}, φ={phi} rad")
-
-        elif subcmd == "arm_j2" and len(args) == 2:
-            angle = float(args[1])
-            self.sender.arm_pitch_j2(angle)
-            print(f"Arm J2 pitch: {angle} rad")
-
-        elif subcmd == "arm_j3" and len(args) == 2:
-            angle = float(args[1])
-            self.sender.arm_roll_j3(angle)
-            print(f"Arm J3 roll: {angle} rad")
-
-        elif subcmd == "arm_j4" and len(args) == 2:
-            angle = float(args[1])
-            self.sender.arm_pitch_j4(angle)
-            print(f"Arm J4 pitch: {angle} rad")
-
-        elif subcmd == "arm_j5" and len(args) == 2:
-            angle = float(args[1])
-            self.sender.arm_roll_j5(angle)
-            print(f"Arm J5 roll: {angle} rad")
+        elif subcmd == "arm_velocity" and len(args) == 7:
+            velocities = [float(value) for value in args[1:]]
+            self.sender.arm_velocity(*velocities)
+            print(f"Arm velocity: {velocities} rad/s")
 
         elif subcmd == "beak":
             if len(args) < 2:
@@ -225,7 +202,7 @@ class CLI:
 
         else:
             print(f"Unknown send command: '{subcmd}' with {len(args) - 1} args")
-            print("Available: traction, arm_1a1b, arm_j2..j5, beak, reset_arm, "
+            print("Available: traction, arm_velocity, beak, reset_arm, "
                   "set_home, reboot_arm, reboot_traction, torque, "
                   "joint_1a1b, joint_roll")
 

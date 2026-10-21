@@ -26,14 +26,14 @@ def main():
 
     can_id = encode_can_id(
         ModuleAddress.CENTRAL, ModuleAddress.MK2_MOD1,
-        MsgType.ARM_PITCH_2_SETPOINT,
+        MsgType.ARM_VELOCITY_SETPOINT,
     )
-    print(f"  encode(CENTRAL -> MK2_MOD1, ARM_PITCH_2_SETPOINT) = 0x{can_id:08X}")
+    print(f"  encode(CENTRAL -> MK2_MOD1, ARM_VELOCITY_SETPOINT) = 0x{can_id:08X}")
 
     decoded = decode_can_id(can_id)
     assert decoded.source == ModuleAddress.CENTRAL, f"src mismatch: {decoded.source}"
     assert decoded.destination == ModuleAddress.MK2_MOD1, f"dst mismatch: {decoded.destination}"
-    assert decoded.msg_type == MsgType.ARM_PITCH_2_SETPOINT, f"msg mismatch: {decoded.msg_type}"
+    assert decoded.msg_type == MsgType.ARM_VELOCITY_SETPOINT, f"msg mismatch: {decoded.msg_type}"
     print(f"  decode -> {decoded.source_name} -> {decoded.destination_name}: {decoded.msg_name}")
     print("  Round-trip OK")
 
@@ -49,11 +49,12 @@ def main():
     assert abs(vals["left_rpm"] - (-50.0)) < 0.01, f"left_rpm mismatch: {vals}"
     print(f"  MOTOR_SETPOINT encode -> {data.hex()} -> {vals} OK")
 
-    # Test arm single float
-    data2 = encode_payload(MsgType.ARM_PITCH_2_SETPOINT, angle=1.5708)
-    vals2 = decode_payload(MsgType.ARM_PITCH_2_SETPOINT, data2)
-    assert abs(vals2["angle"] - 1.5708) < 0.001, f"arm mismatch: {vals2}"
-    print(f"  ARM_PITCH_2_SETPOINT encode -> {data2.hex()} -> OK")
+    # Test unified arm velocity command (J1 differential through J5; J6 beak uses position)
+    arm_values = {name: 0.5 for name in ("base_pitch", "base_roll", "j2", "j3", "j4", "j5")}
+    data2 = encode_payload(MsgType.ARM_VELOCITY_SETPOINT, **arm_values)
+    vals2 = decode_payload(MsgType.ARM_VELOCITY_SETPOINT, data2)
+    assert all(abs(vals2[name] - 0.5) < 0.001 for name in arm_values), f"arm mismatch: {vals2}"
+    print(f"  ARM_VELOCITY_SETPOINT encode -> {data2.hex()} -> OK")
 
     # Test no-payload messages
     data3 = encode_payload(MsgType.RESET_ARM)
@@ -108,11 +109,11 @@ def main():
     assert len(seq_funcs) >= 5, f"Expected >= 5 test functions, got {len(seq_funcs)}"
     print(f"  {len(seq_funcs)} test functions OK")
 
-    # 6. MsgType completeness — STM32LowLevel has 44 message types
+    # 6. MsgType completeness — STM32LowLevel has 46 message types (updated for velocity control)
     print(f"\n=== MsgType enum ===")
     msg_count = len(list(MsgType))
     print(f"  {msg_count} message types loaded")
-    assert msg_count == 44, f"Expected 44 message types, got {msg_count}"
+    assert msg_count == 33, f"Expected 33 message types, got {msg_count}"
 
     # Spot-check key entries
     assert MsgType.REBOOT_ARM == 0x5E

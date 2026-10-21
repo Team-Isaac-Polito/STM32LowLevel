@@ -91,6 +91,10 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
 .send-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .send-form input, .send-form select { background: var(--accent); color: var(--text);
   border: 1px solid rgba(255,255,255,0.1); padding: 6px 10px; border-radius: 4px; }
+.send-form select, .send-form option { color-scheme: dark; background: var(--accent); color: var(--text); }
+#torqueDropdowns select { background-color: var(--accent) !important; color: var(--text) !important;
+  border: 1px solid rgba(255,255,255,0.1) !important; border-radius: 4px !important; color-scheme: dark; }
+#torqueDropdowns option { background-color: var(--card) !important; color: var(--text) !important; }
 .send-form button { background: var(--green); color: var(--bg); border: none;
   padding: 6px 16px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 .send-form button:hover { opacity: 0.9; }
@@ -173,6 +177,26 @@ h2 { color: var(--blue); margin-bottom: 8px; font-size: 1.1rem; }
           <div id="field2" style="display:flex;flex-direction:column;gap:2px">
             <label id="lbl2" style="font-size:0.75rem;color:var(--green)"></label>
             <input id="val2" type="number" step="1" value="0" style="width:140px">
+          </div>
+        </div>
+        <div id="armVelocityGroup" style="display:none;gap:8px;align-items:end;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <label for="armVelocityTarget" style="font-size:0.75rem;color:var(--green)">Motor or joint</label>
+            <select id="armVelocityTarget" onchange="updateArmVelocityFields()" style="min-width:190px">
+              <option value="j1_diff">J1 differential</option>
+              <option value="j2">J2 elbow pitch</option>
+              <option value="j3">J3 forearm roll</option>
+              <option value="j4">J4 wrist pitch</option>
+              <option value="j5">J5 wrist roll</option>
+            </select>
+          </div>
+          <div id="armVelocityField1" style="display:flex;flex-direction:column;gap:2px">
+            <label id="armVelocityLabel1" for="armVelocity1" style="font-size:0.75rem;color:var(--green)">Pitch (rad/s)</label>
+            <input id="armVelocity1" type="number" step="0.1" value="0" style="width:140px">
+          </div>
+          <div id="armVelocityField2" style="display:flex;flex-direction:column;gap:2px">
+            <label for="armVelocity2" style="font-size:0.75rem;color:var(--green)">Roll (rad/s)</label>
+            <input id="armVelocity2" type="number" step="0.1" value="0" style="width:140px">
           </div>
         </div>
         <button onclick="sendCommand()">Send</button>
@@ -282,15 +306,11 @@ const CMDS_ARM = [
   { group: 'Traction', items: [
     { val: 'traction', label: 'Traction Motors — Set wheel speeds' },
   ]},
-  { group: 'Robotic Arm (MOD1)', items: [
-    { val: 'arm_1a1b', label: 'Arm J1 (Differential Pitch) — Base shoulder pair' },
-    { val: 'arm_j2', label: 'Arm J2 (Elbow Pitch) — Single motor elbow' },
-    { val: 'arm_j3', label: 'Arm J3 (Roll) — Forearm rotation' },
-    { val: 'arm_j4', label: 'Arm J4 (Wrist Pitch) — Wrist up/down' },
-    { val: 'arm_j5', label: 'Arm J5 (Wrist Roll) — Wrist rotation' },
+  { group: 'Robotic Arm', items: [
+    { val: 'arm_velocity', label: 'Arm motors — Velocity (J1 differential or individual motor)' },
     { val: 'beak_close', label: 'Beak Close — Gripper close' },
     { val: 'beak_open', label: 'Beak Open — Gripper open' },
-    { val: 'reset_arm', label: 'Reset Arm — Move to home position' },
+    { val: 'reset_arm', label: 'Reset Arm — Move to home' },
     { val: 'reboot_arm', label: 'Reboot Arm — Restart Dynamixel motors' },
     { val: 'set_home', label: 'Set Home — Save current position as home' },
   ]},
@@ -323,19 +343,11 @@ const CMDS_JOINT = [
 const CMD_INFO = {
   traction:    { desc: 'Set traction motor speeds. Positive = forward, negative = reverse. Typical range: -200 to 200 RPM.',
                  lbl1: 'Left RPM', lbl2: 'Right RPM', inputs: 2, step: 5 },
-  arm_1a1b:   { desc: 'Set arm J1 differential shoulder joint. Theta controls pitch, phi controls yaw.',
-                 lbl1: 'Theta / Pitch (rad)', lbl2: 'Phi / Yaw (rad)', inputs: 2, step: 0.05 },
-  arm_j2:     { desc: 'Set arm elbow pitch (J2, Dynamixel XM540).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j3:     { desc: 'Set arm forearm roll (J3, Dynamixel XM540).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j4:     { desc: 'Set arm wrist pitch (J4, Dynamixel XL430).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  arm_j5:     { desc: 'Set arm wrist roll (J5, Dynamixel XL430).',
-                 lbl1: 'Angle (rad)', lbl2: '', inputs: 1, step: 0.05 },
-  beak_close: { desc: 'Close the beak/gripper. No parameters needed — sends close command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
-  beak_open:  { desc: 'Open the beak/gripper. No parameters needed — sends open command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
-  reset_arm:  { desc: 'Move all arm joints to their home position. Reads current positions, then slowly returns to zero.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  arm_velocity: { desc: 'Send one six-value arm velocity frame. Select J1 differential to command pitch and roll together, or select one motor to command only that motor.',
+                  lbl1: '', lbl2: '', inputs: 'arm_velocity', step: 0.1 },
+  beak_close: { desc: 'Close the beak/gripper (position control). No parameters needed — sends close command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  beak_open:  { desc: 'Open the beak/gripper (position control). No parameters needed — sends open command immediately.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
+  reset_arm:  { desc: 'Move all arm joints to their home position via velocity control. J1-J5 use velocity, J6 beak uses position.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   reboot_arm: { desc: 'Reboot all arm Dynamixel motors via protocol command. Use when motors are in error state.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
   set_home:   { desc: 'Set current arm position as new home. Check "Permanent" to persist across power cycles.', lbl1: '', lbl2: '', inputs: 0, step: 1, hasOptions: true },
   reboot_traction: { desc: 'Reboot traction DC motors. Sends a reboot command to the traction controller.', lbl1: '', lbl2: '', inputs: 0, step: 1 },
@@ -415,11 +427,18 @@ function updateForm() {
   const v1 = document.getElementById('val1');
   const v2 = document.getElementById('val2');
   const group = document.getElementById('inputGroup');
+  const armVelocityGroup = document.getElementById('armVelocityGroup');
   const torqueDropdowns = document.getElementById('torqueDropdowns');
 
-  if (info.inputs === 'torque') {
+  if (info.inputs === 'arm_velocity') {
+    group.style.display = 'none';
+    if (torqueDropdowns) torqueDropdowns.style.display = 'none';
+    armVelocityGroup.style.display = 'flex';
+    updateArmVelocityFields();
+  } else if (info.inputs === 'torque') {
     // Show torque dropdowns, hide normal inputs
     group.style.display = 'none';
+    armVelocityGroup.style.display = 'none';
     if (torqueDropdowns) torqueDropdowns.style.display = '';
   } else {
     // Show normal inputs, hide torque dropdowns
@@ -430,18 +449,41 @@ function updateForm() {
     f1.style.display = info.inputs >= 1 ? '' : 'none';
     f2.style.display = info.inputs >= 2 ? '' : 'none';
     group.style.display = info.inputs > 0 ? '' : 'none';
+    armVelocityGroup.style.display = 'none';
     if (torqueDropdowns) torqueDropdowns.style.display = 'none';
   }
   // Show permanent checkbox for set_home
   document.getElementById('cmdOptions').style.display = info.hasOptions ? '' : 'none';
-  // Show relative mode for arm/joint angle commands
-  const isAngle = cmd.startsWith('arm_') || cmd.startsWith('joint_');
-  document.getElementById('relativeMode').style.display = (isAngle && info.inputs > 0) ? '' : 'none';
+  // Show relative mode for arm/joint velocity commands
+  const isVelocity = cmd.startsWith('arm_') || cmd.startsWith('joint_');
+  document.getElementById('relativeMode').style.display = (isVelocity && info.inputs > 0) ? '' : 'none';
   // Show torque quick-preset buttons
   const torquePresets = document.getElementById('torquePresets');
   if (torquePresets) torquePresets.style.display = (cmd === 'torque') ? '' : 'none';
 }
 rebuildCommandDropdown();  // set initial state
+
+function updateArmVelocityFields() {
+  const target = document.getElementById('armVelocityTarget').value;
+  const differential = target === 'j1_diff';
+  document.getElementById('armVelocityField2').style.display = differential ? 'flex' : 'none';
+  document.getElementById('armVelocityLabel1').textContent = differential ? 'Pitch (rad/s)' : 'Velocity (rad/s)';
+}
+
+function readArmVelocityValues() {
+  const targetName = document.getElementById('armVelocityTarget').value;
+  const first = parseFloat(document.getElementById('armVelocity1').value) || 0;
+  const second = parseFloat(document.getElementById('armVelocity2').value) || 0;
+  const velocities = [0, 0, 0, 0, 0, 0];
+  if (targetName === 'j1_diff') {
+    velocities[0] = first;
+    velocities[1] = second;
+  } else {
+    const motorIndex = {j2: 2, j3: 3, j4: 4, j5: 5}[targetName];
+    velocities[motorIndex] = first;
+  }
+  return velocities;
+}
 
 // Filter buttons
 document.getElementById('filterBar').addEventListener('click', e => {
@@ -683,6 +725,7 @@ function rebuildTorqueMotors() {
   });
 }
 
+
 function sendCommand() {
   const cmd = document.getElementById('cmdType').value;
   const target = parseInt(document.getElementById('targetModule').value);
@@ -697,6 +740,7 @@ function sendCommand() {
   }
 
   let v1, v2;
+  let armVelocities = null;
   if (cmd === 'torque') {
     const motorBit = parseInt(document.getElementById('torqueMotor').value) || 0;
     const state = parseInt(document.getElementById('torqueState').value) || 0;
@@ -708,6 +752,11 @@ function sendCommand() {
     }
     v1 = torqueState[targetHex];
     v2 = 0;
+  } else if (cmd === 'arm_velocity') {
+    armVelocities = readArmVelocityValues();
+    opts.velocities = armVelocities;
+    v1 = armVelocities[0];
+    v2 = armVelocities[1];
   } else {
     v1 = parseFloat(document.getElementById('val1').value) || 0;
     v2 = parseFloat(document.getElementById('val2').value) || 0;
@@ -754,7 +803,8 @@ function addToSequence() {
   const v1 = parseFloat(document.getElementById('val1').value) || 0;
   const v2 = parseFloat(document.getElementById('val2').value) || 0;
   const info = CMD_INFO[cmd] || {};
-  cmdSequence.push({cmd, target, v1, v2});
+  const velocities = cmd === 'arm_velocity' ? readArmVelocityValues() : null;
+  cmdSequence.push({cmd, target, v1, v2, velocities});
   renderSequence();
 }
 
@@ -768,6 +818,7 @@ function renderSequence() {
   el.innerHTML = cmdSequence.map((s, i) => {
     const info = CMD_INFO[s.cmd] || { lbl1: 'v1', lbl2: 'v2', inputs: 0 };
     let params = '';
+    if (s.velocities) params += ` velocities=${s.velocities.join(',')}`;
     if (info.inputs >= 1) params += ` ${info.lbl1 || 'v1'}=${s.v1}`;
     if (info.inputs >= 2) params += ` ${info.lbl2 || 'v2'}=${s.v2}`;
     return `<div style="padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.05);">`
@@ -788,7 +839,8 @@ function runSequence() {
   const status = document.getElementById('seqStatus');
 
   if (parallel) {
-    cmdSequence.forEach(s => sendOne(s.cmd, s.target, s.v1, s.v2, {}));
+    cmdSequence.forEach(s => sendOne(s.cmd, s.target, s.v1, s.v2,
+      s.velocities ? {velocities: s.velocities} : {}));
     status.textContent = 'Sent ' + cmdSequence.length + ' commands in parallel';
     if (loop) { seqTimer = setTimeout(runSequence, delay); seqRunning = true; }
     return;
@@ -802,7 +854,8 @@ function runSequence() {
       if (loop) { idx = 0; } else { status.textContent = 'Sequence complete'; seqRunning = false; return; }
     }
     const s = cmdSequence[idx];
-    sendOne(s.cmd, s.target, s.v1, s.v2, {});
+    sendOne(s.cmd, s.target, s.v1, s.v2,
+      s.velocities ? {velocities: s.velocities} : {});
     status.textContent = 'Step ' + (idx+1) + '/' + cmdSequence.length;
     idx++;
     seqTimer = setTimeout(next, delay);
@@ -916,16 +969,11 @@ def send_command():
     try:
         if cmd == "traction":
             sender.traction(v1, v2, destination=dest)
-        elif cmd == "arm_j2":
-            sender.arm_pitch_j2(v1)
-        elif cmd == "arm_j3":
-            sender.arm_roll_j3(v1)
-        elif cmd == "arm_j4":
-            sender.arm_pitch_j4(v1)
-        elif cmd == "arm_j5":
-            sender.arm_roll_j5(v1)
-        elif cmd == "arm_1a1b":
-            sender.arm_pitch_1a1b(v1, v2)
+        elif cmd == "arm_velocity":
+          velocities = data.get("velocities")
+          if not isinstance(velocities, list) or len(velocities) != 6:
+            return jsonify({"error": "arm_velocity requires six velocity values"}), 400
+          sender.arm_velocity(*(float(value) for value in velocities))
         elif cmd == "beak_close":
             sender.arm_beak(close=True)
         elif cmd == "beak_open":

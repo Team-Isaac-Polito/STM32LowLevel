@@ -54,7 +54,7 @@ class CanWrapper
      * FDCAN2->RXF0A.
      *
      * @param[out] msgType Receives the PDU format byte (bits[23:16] of ext ID).
-     * @param[out] data    Pointer to a buffer of at least 8 bytes for payload.
+     * @param[out] data    Pointer to a buffer of at least 64 bytes for payload.
      * @return True if a message was available and read, false if FIFO empty.
      */
     bool readMessage(uint8_t* msgType, uint8_t* data);
