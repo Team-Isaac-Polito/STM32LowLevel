@@ -58,6 +58,7 @@ void MX_USB_PCD_Init(void)
 
 void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
 {
+
   if(pcdHandle->Instance==USB)
   {
   /* USER CODE BEGIN USB_MspInit 0 */
@@ -65,14 +66,10 @@ void HAL_PCD_MspInit(PCD_HandleTypeDef* pcdHandle)
   /* USER CODE END USB_MspInit 0 */
     LL_RCC_SetUSBClockSource(LL_RCC_USB_CLKSOURCE_HSI48);
 
-    /* Some STM32G4 variants expose a separate VDDUSB supply enable bit. */
-  #ifdef PWR_CR2_USV
-    SET_BIT(PWR->CR2, PWR_CR2_USV);
-  #endif
-
     /* USB clock enable */
     __HAL_RCC_USB_CLK_ENABLE();
 
+    /* USB interrupt Init */
     HAL_NVIC_SetPriority(USB_HP_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(USB_HP_IRQn);
     HAL_NVIC_SetPriority(USB_LP_IRQn, 0, 0);
@@ -94,6 +91,7 @@ void HAL_PCD_MspDeInit(PCD_HandleTypeDef* pcdHandle)
     /* Peripheral clock disable */
     __HAL_RCC_USB_CLK_DISABLE();
 
+    /* USB interrupt Deinit */
     HAL_NVIC_DisableIRQ(USB_HP_IRQn);
     HAL_NVIC_DisableIRQ(USB_LP_IRQn);
   /* USER CODE BEGIN USB_MspDeInit 1 */
