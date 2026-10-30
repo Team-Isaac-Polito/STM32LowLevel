@@ -423,7 +423,9 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
     }
 
     if (!dxlDmaTransmit(_usart, packet, length, DXL_RX_TIMEOUT_MS))
+    {
         return false;
+    }
 
     if (activityCb)
     {
