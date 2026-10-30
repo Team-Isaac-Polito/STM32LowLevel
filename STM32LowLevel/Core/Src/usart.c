@@ -272,6 +272,12 @@ void MX_USART2_UART_Init(void)
   {
   }
   /* USER CODE BEGIN USART2_Init 2 */
+  /* Direction pins are controlled by software during half-duplex DMA.
+     CubeMX configures AF7 by default, where GPIO BSRR writes do NOT drive the pin.
+     Override to GPIO push-pull once UART initialization is complete. */
+  LL_GPIO_SetPinMode(DXL1_DE_GPIO_Port, DXL1_DE_Pin, LL_GPIO_MODE_OUTPUT);
+  LL_GPIO_ResetOutputPin(DXL1_DE_GPIO_Port, DXL1_DE_Pin);
+
 
   /* USER CODE END USART2_Init 2 */
 
@@ -382,6 +388,12 @@ void MX_USART3_UART_Init(void)
   {
   }
   /* USER CODE BEGIN USART3_Init 2 */
+  /* Direction pins are controlled by software during half-duplex DMA.
+     CubeMX configures AF7 by default, where GPIO BSRR writes do NOT drive the pin.
+     Override to GPIO push-pull once UART initialization is complete. */
+  LL_GPIO_SetPinMode(DXL2_DE_GPIO_Port, DXL2_DE_Pin, LL_GPIO_MODE_OUTPUT);
+  LL_GPIO_ResetOutputPin(DXL2_DE_GPIO_Port, DXL2_DE_Pin);
+
 
   /* USER CODE END USART3_Init 2 */
 

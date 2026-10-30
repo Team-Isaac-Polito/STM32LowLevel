@@ -455,8 +455,6 @@ DxlStatusPacket DynamixelLL::receivePacket()
         LL_USART_ClearFlag_ORE(_usart);
     }
 
-    // Flush any stale bytes from a previous failed read
-
     uint8_t buf[DXL_MAX_PACKET_SIZE];
     uint16_t idx = 0;
     bool headerFound = false;
@@ -530,7 +528,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
     uint16_t lengthField = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
     uint16_t totalPacketLength = 7u + lengthField;
 
-    if (totalPacketLength > DXL_MAX_PACKET_SIZE)
+    // Protocol 2.0 status length includes instruction, error and CRC (minimum 4).
+    // Reject malformed packets before indexing the status payload or CRC.
+    if (lengthField < 4u || totalPacketLength > DXL_MAX_PACKET_SIZE)
     {
         LOG_WARN("DXL: packet too large (%u)\n", totalPacketLength);
         return result;
@@ -572,6 +572,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     result.error = buf[8];
     uint8_t paramLength = (uint8_t)(lengthField - 4u);
+    if (paramLength > sizeof(result.data))
+    {
+        LOG_WARN("DXL: status data too long (%u)\n", paramLength);
+        return result;
+    }
     result.dataLength = paramLength;
     for (uint8_t i = 0; i < paramLength && i < (uint8_t)sizeof(result.data); ++i)
     {
