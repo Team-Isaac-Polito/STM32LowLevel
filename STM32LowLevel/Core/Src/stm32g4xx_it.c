@@ -205,7 +205,7 @@ void SysTick_Handler(void)
 void DMA1_Channel1_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel1_IRQn 0 */
-  dxlDmaTxIrq();
+  dxlDmaTxIrq2();
   /* USER CODE END DMA1_Channel1_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel1_IRQn 1 */
 
@@ -218,7 +218,7 @@ void DMA1_Channel1_IRQHandler(void)
 void DMA1_Channel2_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel2_IRQn 0 */
-  dxlDmaRxIrq();
+  dxlDmaRxIrq2();
   /* USER CODE END DMA1_Channel2_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel2_IRQn 1 */
 
@@ -231,7 +231,7 @@ void DMA1_Channel2_IRQHandler(void)
 void DMA1_Channel3_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel3_IRQn 0 */
-
+  dxlDmaTxIrq3();
   /* USER CODE END DMA1_Channel3_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel3_IRQn 1 */
 
@@ -244,7 +244,7 @@ void DMA1_Channel3_IRQHandler(void)
 void DMA1_Channel4_IRQHandler(void)
 {
   /* USER CODE BEGIN DMA1_Channel4_IRQn 0 */
-
+  dxlDmaRxIrq3();
   /* USER CODE END DMA1_Channel4_IRQn 0 */
   /* USER CODE BEGIN DMA1_Channel4_IRQn 1 */
 
@@ -285,7 +285,7 @@ void USB_LP_IRQHandler(void)
 void USART2_IRQHandler(void)
 {
   /* USER CODE BEGIN USART2_IRQn 0 */
-  dxlDmaUsartIrq();
+  dxlDmaUsartIrq2();
   /* USER CODE END USART2_IRQn 0 */
   /* USER CODE BEGIN USART2_IRQn 1 */
 
@@ -298,7 +298,7 @@ void USART2_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
-
+  dxlDmaUsartIrq3();
   /* USER CODE END USART3_IRQn 0 */
   /* USER CODE BEGIN USART3_IRQn 1 */
 
