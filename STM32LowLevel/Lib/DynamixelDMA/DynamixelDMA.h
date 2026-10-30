@@ -9,15 +9,17 @@
 extern "C" {
 #endif
 
-/* USART2 only: DMA1 channel 1 TX, channel 2 RX. All operations are foreground
- * except the short DMA/USART interrupt handlers. Shared by all motors on bus 1. */
+/* USART2 DMA1 channels 1/2 and USART3 DMA1 channels 3/4. */
 bool dxlDmaTransmit(USART_TypeDef *usart, const uint8_t *data, uint16_t length,
                     uint32_t timeoutMs);
 bool dxlDmaReceiveByte(USART_TypeDef *usart, uint8_t *value);
 void dxlDmaDiscardRx(USART_TypeDef *usart);
-void dxlDmaTxIrq(void);
-void dxlDmaRxIrq(void);
-void dxlDmaUsartIrq(void);
+void dxlDmaTxIrq2(void);
+void dxlDmaTxIrq3(void);
+void dxlDmaRxIrq2(void);
+void dxlDmaRxIrq3(void);
+void dxlDmaUsartIrq2(void);
+void dxlDmaUsartIrq3(void);
 
 #ifdef __cplusplus
 }

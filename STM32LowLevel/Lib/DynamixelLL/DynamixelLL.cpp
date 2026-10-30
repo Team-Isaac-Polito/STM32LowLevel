@@ -422,29 +422,8 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         return false;
     }
 
-    if (_usart == USART2)
-    {
-        if (!dxlDmaTransmit(_usart, packet, length, DXL_RX_TIMEOUT_MS))
-            return false;
-    }
-    else
-    {
-        // USART3 has no DMA channels configured on feat/dma: retain polling.
-        while (LL_USART_IsActiveFlag_RXNE(_usart))
-            (void)LL_USART_ReceiveData8(_usart);
-        LL_USART_ClearFlag_ORE(_usart);
-        // USART3 external direction control must be configured separately.
-        for (uint16_t i = 0; i < length; ++i)
-        {
-            uint32_t timeout = 100000U;
-            while (!LL_USART_IsActiveFlag_TXE(_usart))
-                if (--timeout == 0) return false;
-            LL_USART_TransmitData8(_usart, packet[i]);
-        }
-        uint32_t timeout = 100000U;
-        while (!LL_USART_IsActiveFlag_TC(_usart))
-            if (--timeout == 0) return false;
-    }
+    if (!dxlDmaTransmit(_usart, packet, length, DXL_RX_TIMEOUT_MS))
+        return false;
 
     if (activityCb)
     {
@@ -477,11 +456,6 @@ DxlStatusPacket DynamixelLL::receivePacket()
     }
 
     // Flush any stale bytes from a previous failed read
-    if (_usart != USART2)
-    {
-        while (LL_USART_IsActiveFlag_RXNE(_usart))
-            (void)LL_USART_ReceiveData8(_usart);
-    }
 
     uint8_t buf[DXL_MAX_PACKET_SIZE];
     uint16_t idx = 0;
@@ -494,9 +468,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
     {
         uint8_t byte = 0;
-        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
+        if (dxlDmaReceiveByte(_usart, &byte))
         {
-            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
+            buf[idx++] = byte;
             if (idx >= 4 && buf[idx - 4] == 0xFF && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD &&
                 buf[idx - 1] == 0x00)
             {
@@ -541,9 +515,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
     {
         uint8_t byte = 0;
-        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
+        if (dxlDmaReceiveByte(_usart, &byte))
         {
-            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
+            buf[idx++] = byte;
         }
     }
     if (idx < 7)
@@ -566,9 +540,9 @@ DxlStatusPacket DynamixelLL::receivePacket()
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
     {
         uint8_t byte = 0;
-        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
+        if (dxlDmaReceiveByte(_usart, &byte))
         {
-            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
+            buf[idx++] = byte;
         }
     }
     if (idx < totalPacketLength)
