@@ -2,6 +2,7 @@
 #define DYNAMIXEL_DMA_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "stm32g4xx.h"
 
 #ifdef __cplusplus
