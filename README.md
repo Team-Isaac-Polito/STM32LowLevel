@@ -3,12 +3,8 @@
 Low-level firmware for the **Rese.Q MK2** modular rescue robot, running on **STM32G474RET6**
 boards inside each module.
 
-> **Firmware version:** LL v1.0 (in development)
+> **Firmware version:** LL v1.0
 > **Board revision:** MK2 V3.0
-
-Migration of [PicoLowLevel](https://github.com/Team-Isaac-Polito/PicoLowLevel) (RP2040/Arduino)
-to the new MK2 V3.0 main board. The CAN bus protocol is unchanged — `reseq_ros2` on the
-Jetson does not require modifications.
 
 ---
 
@@ -73,5 +69,4 @@ See [git-commit-best-practices](https://docs.teamisaac.it/doc/git-commit-best-pr
 ## Documentation
 
 - [MK2 V3.0 Hardware](https://docs.teamisaac.it/doc/v30-q6b3dI1ap7) — Team Isaac Outline
-- [PicoLowLevel](https://docs.teamisaac.it/doc/picolowlevel-WnfPCgwOM6) — previous firmware (RP2040)
-
+- [STM32LowLevel Documentation](https://docs.teamisaac.it/doc/stm32lowlevel-R8dQFetS0U) — Team Isaac Outline
