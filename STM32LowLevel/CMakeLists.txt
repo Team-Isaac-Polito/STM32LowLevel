@@ -73,6 +73,16 @@ target_include_directories(debug_lib PUBLIC
 # Inherit STM32G474xx / USE_FULL_LL_DRIVER / USE_HAL_DRIVER from stm32cubemx
 target_link_libraries(debug_lib PUBLIC stm32cubemx)
 
+# Dynamixel DMA transport (USART2 DMA1 channels 1/2)
+add_library(dynamixeldma STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelDMA/DynamixelDMA.cpp
+)
+target_include_directories(dynamixeldma PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelDMA
+    ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+)
+target_link_libraries(dynamixeldma PUBLIC stm32cubemx)
+
 # DynamixelLL library (USART2/3 LL backend, hardware CRC)
 add_library(dynamixel_lib STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelLL/DynamixelLL.cpp
@@ -80,7 +90,7 @@ add_library(dynamixel_lib STATIC
 target_include_directories(dynamixel_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelLL
 )
-target_link_libraries(dynamixel_lib PUBLIC debug_lib)
+target_link_libraries(dynamixel_lib PUBLIC debug_lib dynamixeldma)
 
 # CAN wrapper library (FDCAN2 register-level runtime TX/RX)
 add_library(can_lib STATIC
@@ -229,6 +239,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
     debug_lib
     dynamixel_lib
+    dynamixeldma
     can_lib
     encoder_lib
     battery_lib

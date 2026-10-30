@@ -4,6 +4,7 @@
  */
 
 #include "DynamixelLL.h"
+#include "DynamixelDMA.h"
 #include "Debug.h"
 
 #include <cstring>
@@ -421,45 +422,29 @@ bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
         return false;
     }
 
-    // Flush any truly stale RX data and clear latent errors before starting
-    while (LL_USART_IsActiveFlag_RXNE(_usart))
+    if (_usart == USART2)
     {
-        (void)LL_USART_ReceiveData8(_usart);
-    }
-    LL_USART_ClearFlag_ORE(_usart);
-    LL_USART_ClearFlag_FE(_usart);
-
-    // STEP 1: Switch the SN74LVC1T45 to Transmit mode (A -> B)
-    LL_GPIO_SetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = HIGH (TX mode)
-
-    // Transmit all bytes (blocking)
-    for (uint16_t i = 0; i < length; ++i)
-    {
-        uint32_t timeout = 100000U;
-        while (!LL_USART_IsActiveFlag_TXE(_usart))
-        {
-            if (--timeout == 0U)
-            {
-                LOG_WARN("DXL: TXE timeout at byte %u\n", i);
-                return false;
-            }
-        }
-        LL_USART_TransmitData8(_usart, packet[i]);
-    }
-
-    // Wait until transmission complete (TC flag) — all bits are out
-    uint32_t tcTimeout = 100000U;
-    while (!LL_USART_IsActiveFlag_TC(_usart))
-    {
-        if (--tcTimeout == 0U)
-        {
-            LOG_WARN("DXL: TC timeout\n");
+        if (!dxlDmaTransmit(_usart, packet, length, DXL_RX_TIMEOUT_MS))
             return false;
-        }
     }
-
-    // STEP 2: Switch the SN74LVC1T45 back to Receive mode (B -> A)
-    LL_GPIO_ResetOutputPin(GPIOA, LL_GPIO_PIN_1); // DXL1_DE = LOW (RX mode)
+    else
+    {
+        // USART3 has no DMA channels configured on feat/dma: retain polling.
+        while (LL_USART_IsActiveFlag_RXNE(_usart))
+            (void)LL_USART_ReceiveData8(_usart);
+        LL_USART_ClearFlag_ORE(_usart);
+        // USART3 external direction control must be configured separately.
+        for (uint16_t i = 0; i < length; ++i)
+        {
+            uint32_t timeout = 100000U;
+            while (!LL_USART_IsActiveFlag_TXE(_usart))
+                if (--timeout == 0) return false;
+            LL_USART_TransmitData8(_usart, packet[i]);
+        }
+        uint32_t timeout = 100000U;
+        while (!LL_USART_IsActiveFlag_TC(_usart))
+            if (--timeout == 0) return false;
+    }
 
     if (activityCb)
     {
@@ -492,9 +477,10 @@ DxlStatusPacket DynamixelLL::receivePacket()
     }
 
     // Flush any stale bytes from a previous failed read
-    while (LL_USART_IsActiveFlag_RXNE(_usart))
+    if (_usart != USART2)
     {
-        (void)LL_USART_ReceiveData8(_usart);
+        while (LL_USART_IsActiveFlag_RXNE(_usart))
+            (void)LL_USART_ReceiveData8(_usart);
     }
 
     uint8_t buf[DXL_MAX_PACKET_SIZE];
@@ -507,9 +493,10 @@ DxlStatusPacket DynamixelLL::receivePacket()
     // Also handle the case where the first 0xFF might be missing (partial header)
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
     {
-        if (LL_USART_IsActiveFlag_RXNE(_usart))
+        uint8_t byte = 0;
+        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
         {
-            buf[idx++] = LL_USART_ReceiveData8(_usart);
+            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
             if (idx >= 4 && buf[idx - 4] == 0xFF && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD &&
                 buf[idx - 1] == 0x00)
             {
@@ -553,9 +540,10 @@ DxlStatusPacket DynamixelLL::receivePacket()
     // read until we have the ID + 2-byte length field (7 bytes total)
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
     {
-        if (LL_USART_IsActiveFlag_RXNE(_usart))
+        uint8_t byte = 0;
+        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
         {
-            buf[idx++] = LL_USART_ReceiveData8(_usart);
+            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
         }
     }
     if (idx < 7)
@@ -577,9 +565,10 @@ DxlStatusPacket DynamixelLL::receivePacket()
     // read remaining bytes
     while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
     {
-        if (LL_USART_IsActiveFlag_RXNE(_usart))
+        uint8_t byte = 0;
+        if (_usart == USART2 ? dxlDmaReceiveByte(_usart, &byte) : LL_USART_IsActiveFlag_RXNE(_usart))
         {
-            buf[idx++] = LL_USART_ReceiveData8(_usart);
+            buf[idx++] = (_usart == USART2 ? byte : LL_USART_ReceiveData8(_usart));
         }
     }
     if (idx < totalPacketLength)
