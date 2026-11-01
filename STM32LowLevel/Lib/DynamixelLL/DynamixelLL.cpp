@@ -497,6 +497,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
         }
     }
 
+    if (dxlDmaRxFailed(_usart))
+    {
+        LOG_WARN("DXL: DMA RX error or overrun\n");
+        return result;
+    }
     if (!headerFound)
     {
         LOG_WARN("DXL: header timeout\n");
@@ -519,6 +524,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
         {
             buf[idx++] = byte;
         }
+    }
+    if (dxlDmaRxFailed(_usart))
+    {
+        LOG_WARN("DXL: DMA RX error or overrun\n");
+        return result;
     }
     if (idx < 7)
     {
@@ -547,6 +557,11 @@ DxlStatusPacket DynamixelLL::receivePacket()
             buf[idx++] = byte;
         }
     }
+    if (dxlDmaRxFailed(_usart))
+    {
+        LOG_WARN("DXL: DMA RX error or overrun\n");
+        return result;
+    }
     if (idx < totalPacketLength)
     {
         LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
@@ -569,7 +584,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
     if (buf[7] != DXL_STATUS_INST)
     {
         LOG_DEBUG("DXL: echo detected, retrying\n");
-        return receivePacket(); // discard echo, try again
+        return result; // reject echo rather than recurse indefinitely
     }
 
     result.error = buf[8];
