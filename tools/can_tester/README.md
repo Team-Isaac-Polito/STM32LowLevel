@@ -112,6 +112,99 @@ On ARM64 Windows you must build `libusb` from source:
 
 ---
 
+## Ixxat USB-to-CAN/FD Standard setup (Issue #67)
+
+The Ixxat adapter is **not** a `gs_usb` device. Do not use the Innomaker
+WinUSB/`gs_usb` driver setup above for this adapter.
+
+### Windows (Ixxat VCI)
+
+1. Install the compatible **HMS Ixxat VCI V4** Windows driver for your exact
+   USB-to-CAN/FD Standard model from the official HMS/Ixxat download pages.
+   Follow the manufacturer's installation and restart instructions.
+2. Plug in the adapter and confirm it appears correctly in Windows Device
+   Manager or the HMS VCI diagnostic utilities. Check its CAN channel numbering.
+3. Install the Python dependencies as shown in the Installation section.
+4. Connect the adapter to a powered, correctly terminated CAN FD test bus,
+   using the module's specified CAN wiring. Do not attach motion-capable
+   hardware until the passive receive check has been approved.
+5. Start the CAN tester with the Ixxat backend:
+
+```powershell
+# Passive feedback monitoring from the interactive terminal
+python -m tools.can_tester -i ixxat -c 0 -b 1000000 -D 2000000
+
+# Alternative: browser dashboard, http://localhost:8080
+python -m tools.can_tester.web_dashboard -i ixxat -c 0 -b 1000000 -D 2000000 --debug
+```
+
+The `ixxat` backend is Windows-specific and needs a working VCI
+installation. The channel is **zero-based and numeric**, typically `0`
+for the first CAN controller. The CAN tester normalizes this CLI value
+to an integer for the Ixxat backend. Do not assume every USB product
+or driver revision is compatible with the installed `python-can`
+version: check the VCI diagnostic utilities and the supported Ixxat
+backend documentation if bus creation fails.
+
+### Linux (Ixxat via SocketCAN)
+
+A compatible Linux kernel or vendor driver must first expose the Ixxat
+CAN FD channel as a network interface (for example `can0`). Support
+depends on the **exact Ixxat device and driver version**. The
+`python-can` Windows `ixxat` backend is not a replacement for a
+Linux driver. If your adapter is not recognized as a CAN interface,
+verify official Linux support before proceeding.
+
+```bash
+ip -details link show
+# Only when the correct CAN network interface is present:
+sudo ip link set can0 down
+sudo ip link set can0 up type can bitrate 1000000 dbitrate 2000000 fd on
+
+python -m tools.can_tester -i socketcan -c can0
+python -m tools.can_tester.web_dashboard -i socketcan -c can0 --debug
+```
+
+### macOS
+
+No native macOS driver/backend has been validated for this exact Ixxat
+adapter. The adapter cannot be assumed to work through `gs_usb` or
+the Windows-only `ixxat` backend. Use a supported Windows/Linux test
+host until a working macOS driver is confirmed.
+
+### Verification checklist
+
+- [ ] Driver or SocketCAN interface recognizes the exact Ixxat adapter.
+- [ ] CLI starts at **1 Mbps nominal / 2 Mbps data** bitrate, CAN FD enabled.
+- [ ] Passively receive STM32 feedback using 29-bit extended IDs and
+      CAN FD frames with BRS. Confirm using independent CAN diagnostics.
+- [ ] Confirm transmitted command frames preserve their extended IDs,
+      CAN FD flag, BRS and data bytes. Compare against known-good traffic.
+- [ ] Verify a safe command with an STM32 module and inspect the
+      corresponding feedback (hardware supervision required).
+- [ ] Verify monitoring and safe commands through the web dashboard.
+- [ ] Test automated motion sequences only with the team's established
+      bench safety measures, a suitable stop mechanism and cleared workspace.
+- [ ] Record OS, driver version, `python-can` version, adapter firmware,
+      interface/channel, and any unresolved limitations.
+
+Without the physical Ixxat adapter and STM32 test setup, software-only
+unit tests cannot establish hardware acceptance.
+
+### Hardware-independent checks
+
+```bash
+python -m unittest tools.can_tester.test_connection -v
+python -m tools.can_tester.test_dry
+python -m tools.can_tester.web_dashboard --demo
+```
+
+The new `test_connection.py` checks interface-specific arguments and
+that the existing sender constructs CAN FD, BRS-enabled extended frames.
+These tests do not open the physical Ixxat device.
+
+---
+
 ## Usage
 
 ### Web Dashboard
