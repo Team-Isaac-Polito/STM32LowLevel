@@ -298,41 +298,44 @@ Verify:
 act --version
 ```
 
-#### Running Workflows
+#### Running the CI Workflow
 
-From the `STM32LowLevel/` directory (where `.github/` lives):
+From the repository root (`STM32LowLevel/`, where `.github/` lives):
 
-**List available workflows:**
+**List available jobs:**
 ```bash
 act --list
 ```
 
-**Build workflow** (runs the 3-module matrix build):
+The consolidated [`ci.yaml`](../.github/workflows/ci.yaml) workflow runs on both pushes and pull requests targeting `main`. It includes **Format** (clang-format), **Lint** (clang-tidy), a **Build** matrix (all three modules in debug and release), and a final **CI Gate** that succeeds only when the required jobs succeed.
+
+**Run all checks locally:**
 ```bash
 act push
-```
-
-This triggers the `build.yml` workflow only (which has `on: push`). All three modules (MK2_MOD1, MK2_MOD2, MK2_MOD3) are built in both debug and release configurations.
-
-**Style workflow** (clang-format + clang-tidy):
-```bash
+# Or emulate a pull request event:
 act pull_request
 ```
 
-This triggers the `style.yml` and `build.yml` workflows (both of which have `on: pull_request`).
-
-**Run a specific job only:**
+**Run an individual job:**
 ```bash
+act --job format
+act --job lint
 act --job build
 act --job build --matrix preset:MK2_MOD1
-act --job clang-format
 ```
+
+**Run the final gate and its dependencies:**
+```bash
+act --job ci-gate
+```
+
+The CI Gate is the single required status check intended for the GitHub branch ruleset; individual jobs remain visible in the GitHub Actions checks and logs.
 
 #### How It Works
 
 `act` uses Docker containers to replicate the GitHub Actions runner environment locally. The first run is slower because it pulls the runner image. Subsequent runs are faster as the image is cached.
 
-> **Tip:** If you only changed code in one module, you don't need to run the full matrix. Use the one-line CMake build commands from Section 6 instead. Use `act` when you want to verify CI will pass before pushing or opening a PR.
+> **Tip:** If you only changed code in one module, you don't need to run the full matrix. Use the CMake build commands from Section 4 instead. Use `act` when you want to verify CI will pass before pushing or opening a PR.
 
 ### 3. Style Fix Guide
 
@@ -372,13 +375,13 @@ Get-ChildItem -Path Core/Src, Lib, USB_Device -Include *.cpp, *.h, *.tpp -Recurs
 
 #### Quick Auto-Fix
 
-To automatically fix all style issues in the project according to the style workflow, run the following command on Linux/WSL:
+To automatically fix all style issues in the project according to the CI workflow, run the following command on Linux/WSL:
 
 ```bash
 # Navigate to STM32LowLevel directory
 cd STM32LowLevel
 
-# Format ALL files that are checked by the style workflow
+# Format ALL files that are checked by the CI workflow
 find Core/Src Lib USB_Device -name "*.cpp" -o -name "*.h" -o -name "*.tpp" | xargs clang-format -i -style=file
 ```
 
@@ -399,11 +402,11 @@ clang-format -style=file Core/Src/main.cpp | diff -u Core/Src/main.cpp -
 # If output shows differences, file needs formatting
 ```
 
-#### GitHub Style Workflow
+#### GitHub CI Style Jobs
 
 The project uses two style checks:
 
 1. **clang-format**: Checks code formatting (runs on all .cpp, .h, .tpp files)
 2. **clang-tidy**: Checks naming conventions (runs only on .cpp files)
 
-Both checks are run on pull requests to main branch.
+Both checks run as separate jobs in `.github/workflows/ci.yaml` on pull requests and pushes to `main`, and both are required by the `CI Gate` job.
