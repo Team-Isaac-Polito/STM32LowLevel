@@ -43,6 +43,8 @@ extern "C"
      * @note The data buffer must remain valid and unchanged until
      *       dxlDmaPollTransmit() returns COMPLETE or FAILED.
      * @note Only one active transmission per USART is supported.
+     * @warning Callers must serialize complete request/response sequences
+     *          on a shared USART; the TX busy flag is not a transaction mutex.
      */
     bool dxlDmaStartTransmit(USART_TypeDef* usart, const uint8_t* data, uint16_t length, uint32_t timeoutMs);
 
