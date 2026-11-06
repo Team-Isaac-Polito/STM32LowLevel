@@ -20,10 +20,12 @@ typedef struct
     volatile bool failed;
     volatile uint32_t wraps;
     uint32_t consumed;
+    uint32_t txStarted;
+    uint32_t txTimeout;
 } Bus;
 Bus buses[] = {
-    {USART2, LL_DMA_CHANNEL_1, LL_DMA_CHANNEL_2, GPIOA, LL_GPIO_PIN_1, {}, false, false, false, 0, 0},
-    {USART3, LL_DMA_CHANNEL_3, LL_DMA_CHANNEL_4, GPIOB, LL_GPIO_PIN_14, {}, false, false, false, 0, 0},
+    {USART2, LL_DMA_CHANNEL_1, LL_DMA_CHANNEL_2, GPIOA, LL_GPIO_PIN_1, {}, false, false, false, 0, 0, 0, 0},
+    {USART3, LL_DMA_CHANNEL_3, LL_DMA_CHANNEL_4, GPIOB, LL_GPIO_PIN_14, {}, false, false, false, 0, 0, 0, 0},
 };
 Bus* findBus(USART_TypeDef* uart)
 {
@@ -85,6 +87,7 @@ void stopTx(Bus& b)
 void stopRx(Bus& b)
 {
     LL_USART_DisableDMAReq_RX(b.uart);
+    LL_USART_DisableIT_ERROR(b.uart);
     LL_DMA_DisableIT_TC(DMA1, b.rxChannel);
     LL_DMA_DisableIT_TE(DMA1, b.rxChannel);
     LL_DMA_DisableChannel(DMA1, b.rxChannel);
@@ -106,24 +109,27 @@ void startRx(Bus& b)
     LL_DMA_EnableIT_TE(DMA1, b.rxChannel);
     LL_DMA_EnableChannel(DMA1, b.rxChannel);
     LL_USART_EnableDMAReq_RX(b.uart);
+    LL_USART_EnableIT_ERROR(b.uart);
 }
+// Snapshot interrupt-maintained wraps and the DMA counter without ISR races.
 uint32_t produced(Bus& b)
 {
-    uint32_t before, after, remaining;
-    bool pending;
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    uint32_t remaining;
+    bool before, after;
     do
     {
-        before = b.wraps;
-        pending = rxComplete(b);
+        before = rxComplete(b);
         remaining = LL_DMA_GetDataLength(DMA1, b.rxChannel);
-        after = b.wraps;
-    }
-    while (before != after);
-    if (pending && remaining > 0)
+        after = rxComplete(b);
+    } while (before != after);
+    const uint32_t wraps = b.wraps + ((after && remaining != 0U) ? 1U : 0U);
+    if ((primask & 1U) == 0U)
     {
-        ++before;
+        __enable_irq();
     }
-    return before * RX_SIZE + (RX_SIZE - remaining);
+    return wraps * RX_SIZE + (RX_SIZE - remaining);
 }
 void txIrq(USART_TypeDef* uart)
 {
@@ -139,6 +145,8 @@ void txIrq(USART_TypeDef* uart)
     {
         b->failed = true;
         stopTx(*b);
+        startRx(*b);
+        LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
     }
     else if (complete)
     {
@@ -159,8 +167,9 @@ void rxIrq(USART_TypeDef* uart)
     if (error)
     {
         b->failed = true;
+        stopRx(*b);
     }
-    if (complete)
+    else if (complete)
     {
         ++b->wraps;
     }
@@ -180,35 +189,48 @@ void usartIrq(USART_TypeDef* uart)
         LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
         b->done = true;
     }
+    bool error = false;
     if (LL_USART_IsActiveFlag_ORE(uart))
     {
         LL_USART_ClearFlag_ORE(uart);
-        b->failed = true;
+        error = true;
     }
     if (LL_USART_IsActiveFlag_FE(uart))
     {
         LL_USART_ClearFlag_FE(uart);
-        b->failed = true;
+        error = true;
     }
     if (LL_USART_IsActiveFlag_NE(uart))
     {
         LL_USART_ClearFlag_NE(uart);
+        error = true;
+    }
+    if (error)
+    {
         b->failed = true;
+        stopRx(*b);
+        stopTx(*b);
+        LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
     }
 }
 } // namespace
 
-extern "C" bool dxlDmaTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_t length, uint32_t timeoutMs)
+extern "C" bool dxlDmaStartTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_t length, uint32_t timeoutMs)
 {
     Bus* b = findBus(uart);
-    if (!b || !data || !length || !timeoutMs || b->busy || !LL_USART_IsEnabled(uart))
+    if (!b || !data || length == 0U || timeoutMs == 0U || b->busy || !LL_USART_IsEnabled(uart))
     {
         return false;
     }
+
     b->busy = true;
     b->done = false;
     b->failed = false;
+    b->txStarted = HAL_GetTick();
+    b->txTimeout = timeoutMs;
     stopRx(*b);
+
+    // The RX DMA consumer is stopped, so discarding stale RDR bytes is safe.
     while (LL_USART_IsActiveFlag_RXNE(uart))
     {
         (void)LL_USART_ReceiveData8(uart);
@@ -216,6 +238,8 @@ extern "C" bool dxlDmaTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_
     LL_USART_ClearFlag_ORE(uart);
     LL_USART_ClearFlag_FE(uart);
     LL_USART_ClearFlag_NE(uart);
+
+    // Keep the external transceiver driving until USART TC, not DMA TC.
     LL_GPIO_SetOutputPin(b->directionPort, b->directionPin);
     LL_DMA_DisableChannel(DMA1, b->txChannel);
     LL_DMA_ConfigAddresses(DMA1,
@@ -231,24 +255,72 @@ extern "C" bool dxlDmaTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_
     LL_USART_EnableIT_TC(uart);
     LL_DMA_EnableChannel(DMA1, b->txChannel);
     LL_USART_EnableDMAReq_TX(uart);
-    const uint32_t start = HAL_GetTick();
-    while (!b->done && !b->failed)
+    return true;
+}
+
+extern "C" DxlDmaTxStatus dxlDmaPollTransmit(USART_TypeDef* uart)
+{
+    Bus* b = findBus(uart);
+    if (!b)
     {
-        if (HAL_GetTick() - start >= timeoutMs)
-        {
-            b->failed = true;
-            break;
-        }
+        return DXL_DMA_TX_FAILED;
     }
-    const bool success = b->done && !b->failed;
-    if (!success)
+    if (!b->busy)
+    {
+        if (b->failed) return DXL_DMA_TX_FAILED;
+        return b->done ? DXL_DMA_TX_COMPLETE : DXL_DMA_TX_IDLE;
+    }
+    if (b->failed)
     {
         stopTx(*b);
         startRx(*b);
         LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
+        b->busy = false;
+        return DXL_DMA_TX_FAILED;
     }
+    if (b->done)
+    {
+        b->busy = false;
+        return DXL_DMA_TX_COMPLETE;
+    }
+    if ((HAL_GetTick() - b->txStarted) >= b->txTimeout)
+    {
+        // A timed-out transmit must not leave the level shifter in TX mode.
+        stopTx(*b);
+        LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
+        startRx(*b);
+        b->failed = true;
+        b->busy = false;
+        return DXL_DMA_TX_FAILED;
+    }
+    return DXL_DMA_TX_BUSY;
+}
+
+extern "C" void dxlDmaAbort(USART_TypeDef* uart)
+{
+    Bus* b = findBus(uart);
+    if (!b) return;
+    stopTx(*b);
+    stopRx(*b);
+    LL_GPIO_ResetOutputPin(b->directionPort, b->directionPin);
+    startRx(*b);
+    b->failed = true;
+    b->done = false;
     b->busy = false;
-    return success;
+}
+
+extern "C" bool dxlDmaTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_t length, uint32_t timeoutMs)
+{
+    if (!dxlDmaStartTransmit(uart, data, length, timeoutMs))
+    {
+        return false;
+    }
+    DxlDmaTxStatus status;
+    do
+    {
+        status = dxlDmaPollTransmit(uart);
+    } while (status == DXL_DMA_TX_BUSY);
+    return status == DXL_DMA_TX_COMPLETE;
 }
 extern "C" bool dxlDmaReceiveByte(USART_TypeDef* uart, uint8_t* value)
 {
