@@ -439,29 +439,20 @@ DxlStatusPacket DynamixelLL::receivePacket()
 {
     DxlStatusPacket result = {false, 0, 0, {}, 0};
 
-    // Clear latent error flags that may have accumulated from noise,
-    // floating bus, or self-echo during transmission.
-    // FE (Framing Error): triggered by floating line when no motor connected
-    // NE (Noise Error): triggered by noise on the bus
-    // ORE (Overrun Error): triggered by self-echo in half-duplex mode
-    if (LL_USART_IsActiveFlag_FE(_usart))
+    // RX DMA captures USART errors in its ISR; do not clear them here.
+    if (dxlDmaRxFailed(_usart))
     {
-        LL_USART_ClearFlag_FE(_usart);
-    }
-    if (LL_USART_IsActiveFlag_NE(_usart))
-    {
-        LL_USART_ClearFlag_NE(_usart);
-    }
-    if (LL_USART_IsActiveFlag_ORE(_usart))
-    {
-        LL_USART_ClearFlag_ORE(_usart);
+        return result;
     }
 
     uint8_t buf[DXL_MAX_PACKET_SIZE];
-    uint16_t idx = 0;
-    bool headerFound = false;
+    const uint32_t start = HAL_GetTick();
 
-    uint32_t start = HAL_GetTick();
+    // Skip at most three complete echoes/unexpected frames, without recursion.
+    for (uint8_t frames = 0; frames < 3; ++frames)
+    {
+        uint16_t idx = 0;
+        bool headerFound = false;
 
     // locate the 4-byte header 0xFF 0xFF 0xFD 0x00
     // Also handle the case where the first 0xFF might be missing (partial header)
@@ -538,7 +529,7 @@ DxlStatusPacket DynamixelLL::receivePacket()
 
     result.id = buf[4];
     uint16_t lengthField = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
-    uint16_t totalPacketLength = 7u + lengthField;
+    const uint32_t totalPacketLength = 7u + static_cast<uint32_t>(lengthField);
 
     // Protocol 2.0 status length includes instruction, error and CRC (minimum 4).
     // Reject malformed packets before indexing the status payload or CRC.
@@ -583,12 +574,12 @@ DxlStatusPacket DynamixelLL::receivePacket()
     // verify instruction byte (must be 0x55 for status packet)
     if (buf[7] != DXL_STATUS_INST)
     {
-        LOG_DEBUG("DXL: echo detected, retrying\n");
-        return result; // reject echo rather than recurse indefinitely
+        LOG_DEBUG("DXL: unexpected instruction, discarding frame\n");
+        continue;
     }
 
     result.error = buf[8];
-    uint8_t paramLength = (uint8_t)(lengthField - 4u);
+    const uint16_t paramLength = static_cast<uint16_t>(lengthField - 4u);
     if (paramLength > sizeof(result.data))
     {
         LOG_WARN("DXL: status data too long (%u)\n", paramLength);
@@ -607,13 +598,15 @@ DxlStatusPacket DynamixelLL::receivePacket()
     if (receivedCRC != computedCRC)
     {
         LOG_WARN("DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
-        return result;
+        continue;
     }
 
     result.valid = true;
     if (activityCb)
     {
         activityCb();
+    }
+    return result;
     }
     return result;
 }
