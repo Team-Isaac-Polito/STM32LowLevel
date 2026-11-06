@@ -17,7 +17,8 @@ extern "C"
      * @param length Number of bytes in the packet.
      * @param timeoutMs Maximum transmission wait, in milliseconds.
      * @return True if the final UART frame was transmitted; false on error or timeout.
-     * @note This compatibility API blocks. See the nonblocking transport APIs.
+     * @note Blocking foreground API: interrupts must be enabled; not for ISR use.
+     *       See the nonblocking transmit API for cooperative scheduling.
      */
     bool dxlDmaTransmit(USART_TypeDef* usart, const uint8_t* data, uint16_t length, uint32_t timeoutMs);
 
