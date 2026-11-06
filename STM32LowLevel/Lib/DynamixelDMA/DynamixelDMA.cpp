@@ -76,6 +76,10 @@ bool rxComplete(Bus& b)
 {
     return b.uart == USART2 ? LL_DMA_IsActiveFlag_TC2(DMA1) : LL_DMA_IsActiveFlag_TC4(DMA1);
 }
+bool rxHalfComplete(Bus& b)
+{
+    return b.uart == USART2 ? LL_DMA_IsActiveFlag_HT2(DMA1) : LL_DMA_IsActiveFlag_HT4(DMA1);
+}
 void stopTx(Bus& b)
 {
     LL_USART_DisableDMAReq_TX(b.uart);
@@ -89,6 +93,7 @@ void stopRx(Bus& b)
     LL_USART_DisableDMAReq_RX(b.uart);
     LL_USART_DisableIT_ERROR(b.uart);
     LL_DMA_DisableIT_TC(DMA1, b.rxChannel);
+    LL_DMA_DisableIT_HT(DMA1, b.rxChannel);
     LL_DMA_DisableIT_TE(DMA1, b.rxChannel);
     LL_DMA_DisableChannel(DMA1, b.rxChannel);
 }
@@ -106,6 +111,7 @@ void startRx(Bus& b)
     LL_DMA_SetDataLength(DMA1, b.rxChannel, RX_SIZE);
     clearRxFlags(b);
     LL_DMA_EnableIT_TC(DMA1, b.rxChannel);
+    LL_DMA_EnableIT_HT(DMA1, b.rxChannel);
     LL_DMA_EnableIT_TE(DMA1, b.rxChannel);
     LL_DMA_EnableChannel(DMA1, b.rxChannel);
     LL_USART_EnableDMAReq_RX(b.uart);
@@ -162,9 +168,12 @@ void rxIrq(USART_TypeDef* uart)
         return;
     }
     const bool error = rxError(*b);
+    const bool half = rxHalfComplete(*b);
     const bool complete = rxComplete(*b);
     clearRxFlags(*b);
-    if (error)
+    // HT and TC pending together indicate that servicing fell behind by
+    // at least half a buffer. Reject possibly overwritten data.
+    if (error || (half && complete))
     {
         b->failed = true;
         stopRx(*b);
@@ -218,12 +227,24 @@ void usartIrq(USART_TypeDef* uart)
 extern "C" bool dxlDmaStartTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_t length, uint32_t timeoutMs)
 {
     Bus* b = findBus(uart);
-    if (!b || !data || length == 0U || timeoutMs == 0U || b->busy || !LL_USART_IsEnabled(uart))
+    if (!b || !data || length == 0U || timeoutMs == 0U || !LL_USART_IsEnabled(uart))
     {
         return false;
     }
 
-    b->busy = true;
+    // Claim TX atomically against interrupt-driven callers.
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    const bool alreadyBusy = b->busy;
+    if (!alreadyBusy)
+    {
+        b->busy = true;
+    }
+    __set_PRIMASK(primask);
+    if (alreadyBusy)
+    {
+        return false;
+    }
     b->done = false;
     b->failed = false;
     b->txStarted = HAL_GetTick();
