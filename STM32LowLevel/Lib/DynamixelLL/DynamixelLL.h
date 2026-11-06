@@ -1,6 +1,6 @@
 /**
  * @file DynamixelLL.h
- * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 (USART2 LL backend).
+ * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 USART2/3.
  *
  * e-manual for DYNAMIXEL protocol 2.0: https://emanual.robotis.com/docs/en/dxl/protocol2/
  * e-Manual for DYNAMIXEL XL430-W250: https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/
@@ -526,11 +526,11 @@ class DynamixelLL
     bool sendPacket(const uint8_t* packet, uint16_t length);
 
     /**
-     * @brief Receive a Dynamixel status packet with timeout (blocking, LL).
+     * @brief Receive and validate a status packet from the circular DMA buffer.
      *
      * Searches for the 4-byte header (0xFF 0xFF 0xFD 0x00), assembles the
-     * full packet, verifies the CRC-16-IBM, and discards echo bytes that
-     * appear in half-duplex mode (byte 7 ≠ 0x55 → recurse).
+     * full packet, verifies the CRC, and skips a bounded number of
+     * unexpected or corrupt frames without recursion.
      *
      * @return Decoded DxlStatusPacket; `valid` is false on timeout or CRC error.
      */
