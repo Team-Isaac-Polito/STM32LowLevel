@@ -453,160 +453,161 @@ DxlStatusPacket DynamixelLL::receivePacket()
     {
         uint16_t idx = 0;
         bool headerFound = false;
+        result = {};
 
-    // locate the 4-byte header 0xFF 0xFF 0xFD 0x00
-    // Also handle the case where the first 0xFF might be missing (partial header)
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
-    {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        // locate the 4-byte header 0xFF 0xFF 0xFD 0x00
+        // Also handle the case where the first 0xFF might be missing (partial header)
+        while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
         {
-            buf[idx++] = byte;
-            if (idx >= 4 && buf[idx - 4] == 0xFF && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD &&
-                buf[idx - 1] == 0x00)
+            uint8_t byte = 0;
+            if (dxlDmaReceiveByte(_usart, &byte))
             {
-                // Normalise header to start at index 0
-                buf[0] = 0xFF;
-                buf[1] = 0xFF;
-                buf[2] = 0xFD;
-                buf[3] = 0x00;
-                idx = 4;
-                headerFound = true;
-                break;
+                buf[idx++] = byte;
+                if (idx >= 4 && buf[idx - 4] == 0xFF && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD &&
+                    buf[idx - 1] == 0x00)
+                {
+                    // Normalise header to start at index 0
+                    buf[0] = 0xFF;
+                    buf[1] = 0xFF;
+                    buf[2] = 0xFD;
+                    buf[3] = 0x00;
+                    idx = 4;
+                    headerFound = true;
+                    break;
+                }
+                else if (idx >= 3 && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD && buf[idx - 1] == 0x00)
+                {
+                    // Partial header: first 0xFF was likely consumed as stale byte
+                    buf[0] = 0xFF;
+                    buf[1] = 0xFF;
+                    buf[2] = 0xFD;
+                    buf[3] = 0x00;
+                    idx = 4;
+                    headerFound = true;
+                    break;
+                }
             }
-            else if (idx >= 3 && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD && buf[idx - 1] == 0x00)
+        }
+
+        if (dxlDmaRxFailed(_usart))
+        {
+            LOG_WARN("DXL: DMA RX error or overrun\n");
+            return result;
+        }
+        if (!headerFound)
+        {
+            LOG_WARN("DXL: header timeout\n");
+    #ifdef DEBUG
+            // Debug: check if USART is still enabled and if any flags are set
+            LOG_DEBUG("DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
+                      (unsigned long)_usart->ISR,
+                      (unsigned)LL_USART_IsEnabled(_usart),
+                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
+                      (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
+    #endif
+            return result;
+        }
+
+        // read until we have the ID + 2-byte length field (7 bytes total)
+        while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
+        {
+            uint8_t byte = 0;
+            if (dxlDmaReceiveByte(_usart, &byte))
             {
-                // Partial header: first 0xFF was likely consumed as stale byte
-                buf[0] = 0xFF;
-                buf[1] = 0xFF;
-                buf[2] = 0xFD;
-                buf[3] = 0x00;
-                idx = 4;
-                headerFound = true;
-                break;
+                buf[idx++] = byte;
             }
         }
-    }
-
-    if (dxlDmaRxFailed(_usart))
-    {
-        LOG_WARN("DXL: DMA RX error or overrun\n");
-        return result;
-    }
-    if (!headerFound)
-    {
-        LOG_WARN("DXL: header timeout\n");
-#ifdef DEBUG
-        // Debug: check if USART is still enabled and if any flags are set
-        LOG_DEBUG("DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
-                  (unsigned long)_usart->ISR,
-                  (unsigned)LL_USART_IsEnabled(_usart),
-                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
-                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
-#endif
-        return result;
-    }
-
-    // read until we have the ID + 2-byte length field (7 bytes total)
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
-    {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        if (dxlDmaRxFailed(_usart))
         {
-            buf[idx++] = byte;
+            LOG_WARN("DXL: DMA RX error or overrun\n");
+            return result;
         }
-    }
-    if (dxlDmaRxFailed(_usart))
-    {
-        LOG_WARN("DXL: DMA RX error or overrun\n");
-        return result;
-    }
-    if (idx < 7)
-    {
-        LOG_WARN("DXL: header extension timeout\n");
-        return result;
-    }
-
-    result.id = buf[4];
-    uint16_t lengthField = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
-    const uint32_t totalPacketLength = 7u + static_cast<uint32_t>(lengthField);
-
-    // Protocol 2.0 status length includes instruction, error and CRC (minimum 4).
-    // Reject malformed packets before indexing the status payload or CRC.
-    if (lengthField < 4u || totalPacketLength > DXL_MAX_PACKET_SIZE)
-    {
-        LOG_WARN("DXL: packet too large (%u)\n", totalPacketLength);
-        return result;
-    }
-
-    // read remaining bytes
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
-    {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        if (idx < 7)
         {
-            buf[idx++] = byte;
+            LOG_WARN("DXL: header extension timeout\n");
+            return result;
         }
-    }
-    if (dxlDmaRxFailed(_usart))
-    {
-        LOG_WARN("DXL: DMA RX error or overrun\n");
-        return result;
-    }
-    if (idx < totalPacketLength)
-    {
-        LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
-        return result;
-    }
 
-#ifdef DEBUG
-    {
-        char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
-        int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
-        for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
+        result.id = buf[4];
+        uint16_t lengthField = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
+        const uint32_t totalPacketLength = 7u + static_cast<uint32_t>(lengthField);
+
+        // Protocol 2.0 status length includes instruction, error and CRC (minimum 4).
+        // Reject malformed packets before indexing the status payload or CRC.
+        if (lengthField < 4u || totalPacketLength > DXL_MAX_PACKET_SIZE)
         {
-            pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
+            LOG_WARN("DXL: packet too large (%u)\n", totalPacketLength);
+            return result;
         }
-        LOG_DEBUG("%s\n", hexBuf);
-    }
-#endif
 
-    // verify instruction byte (must be 0x55 for status packet)
-    if (buf[7] != DXL_STATUS_INST)
-    {
-        LOG_DEBUG("DXL: unexpected instruction, discarding frame\n");
-        continue;
-    }
+        // read remaining bytes
+        while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
+        {
+            uint8_t byte = 0;
+            if (dxlDmaReceiveByte(_usart, &byte))
+            {
+                buf[idx++] = byte;
+            }
+        }
+        if (dxlDmaRxFailed(_usart))
+        {
+            LOG_WARN("DXL: DMA RX error or overrun\n");
+            return result;
+        }
+        if (idx < totalPacketLength)
+        {
+            LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
+            return result;
+        }
 
-    result.error = buf[8];
-    const uint16_t paramLength = static_cast<uint16_t>(lengthField - 4u);
-    if (paramLength > sizeof(result.data))
-    {
-        LOG_WARN("DXL: status data too long (%u)\n", paramLength);
+    #ifdef DEBUG
+        {
+            char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
+            int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
+            for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
+            {
+                pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
+            }
+            LOG_DEBUG("%s\n", hexBuf);
+        }
+    #endif
+
+        // verify instruction byte (must be 0x55 for status packet)
+        if (buf[7] != DXL_STATUS_INST)
+        {
+            LOG_DEBUG("DXL: unexpected instruction, discarding frame\n");
+            continue;
+        }
+
+        result.error = buf[8];
+        const uint16_t paramLength = static_cast<uint16_t>(lengthField - 4u);
+        if (paramLength > sizeof(result.data))
+        {
+            LOG_WARN("DXL: status data too long (%u)\n", paramLength);
+            return result;
+        }
+        result.dataLength = paramLength;
+        for (uint8_t i = 0; i < paramLength && i < (uint8_t)sizeof(result.data); ++i)
+        {
+            result.data[i] = buf[9 + i];
+        }
+
+        // verify CRC
+        uint16_t receivedCRC = (uint16_t)buf[9 + paramLength] | ((uint16_t)buf[10 + paramLength] << 8);
+        uint16_t computedCRC = calculateCRC(buf, 9u + paramLength);
+
+        if (receivedCRC != computedCRC)
+        {
+            LOG_WARN("DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
+            continue;
+        }
+
+        result.valid = true;
+        if (activityCb)
+        {
+            activityCb();
+        }
         return result;
-    }
-    result.dataLength = paramLength;
-    for (uint8_t i = 0; i < paramLength && i < (uint8_t)sizeof(result.data); ++i)
-    {
-        result.data[i] = buf[9 + i];
-    }
-
-    // verify CRC
-    uint16_t receivedCRC = (uint16_t)buf[9 + paramLength] | ((uint16_t)buf[10 + paramLength] << 8);
-    uint16_t computedCRC = calculateCRC(buf, 9u + paramLength);
-
-    if (receivedCRC != computedCRC)
-    {
-        LOG_WARN("DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
-        continue;
-    }
-
-    result.valid = true;
-    if (activityCb)
-    {
-        activityCb();
-    }
-    return result;
     }
     return result;
 }
