@@ -22,6 +22,46 @@ extern "C"
     bool dxlDmaTransmit(USART_TypeDef* usart, const uint8_t* data, uint16_t length, uint32_t timeoutMs);
 
     /**
+     * @brief State of a DMA transmission when checked without blocking.
+     */
+    typedef enum
+    {
+        DXL_DMA_TX_IDLE,     /**< No transmission has been started. */
+        DXL_DMA_TX_BUSY,     /**< DMA or USART is still transmitting. */
+        DXL_DMA_TX_COMPLETE, /**< USART TC occurred; RX DMA is armed. */
+        DXL_DMA_TX_FAILED    /**< DMA/USART failure or transmission timeout. */
+    } DxlDmaTxStatus;
+
+    /**
+     * @brief Start a DMA transmission without waiting for completion.
+     * @param usart USART2 or USART3.
+     * @param data Packet stored in DMA-accessible SRAM.
+     * @param length Number of bytes to send.
+     * @param timeoutMs Maximum time allowed for the TX operation.
+     * @return True when the channel accepted the transfer.
+     * @note The data buffer must remain valid and unchanged until
+     *       dxlDmaPollTransmit() returns COMPLETE or FAILED.
+     * @note Only one active transmission per USART is supported.
+     */
+    bool dxlDmaStartTransmit(USART_TypeDef* usart, const uint8_t* data, uint16_t length, uint32_t timeoutMs);
+
+    /**
+     * @brief Check DMA/USART TX completion without waiting.
+     * @param usart USART2 or USART3.
+     * @return Current TX status; FAILED includes a timed-out transfer.
+     * @note Call periodically when using the asynchronous API so timeouts
+     *       are enforced and a completed transfer can be acknowledged.
+     */
+    DxlDmaTxStatus dxlDmaPollTransmit(USART_TypeDef* usart);
+
+    /**
+     * @brief Abort TX and restore the bus to RX direction.
+     * @param usart USART2 or USART3.
+     * @note Cancels any pending TX and invalidates its completion result.
+     */
+    void dxlDmaAbort(USART_TypeDef* usart);
+
+    /**
      * @brief Read the oldest unconsumed byte from the circular RX DMA buffer.
      * @param usart USART2 or USART3.
      * @param[out] value Destination for one received byte.
