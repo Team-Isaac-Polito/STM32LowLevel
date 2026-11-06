@@ -332,6 +332,11 @@ extern "C" void dxlDmaAbort(USART_TypeDef* uart)
 
 extern "C" bool dxlDmaTransmit(USART_TypeDef* uart, const uint8_t* data, uint16_t length, uint32_t timeoutMs)
 {
+    // This compatibility path needs SysTick, DMA and USART interrupts.
+    if ((__get_PRIMASK() & 1U) != 0U || __get_IPSR() != 0U)
+    {
+        return false;
+    }
     if (!dxlDmaStartTransmit(uart, data, length, timeoutMs))
     {
         return false;
