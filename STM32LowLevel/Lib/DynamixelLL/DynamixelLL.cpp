@@ -332,8 +332,8 @@ uint8_t DynamixelLL::setGoalVelocityRpm(float rpm)
 
 uint8_t DynamixelLL::getPresentVelocityRpm(float& rpm)
 {
-    int16_t raw = 0;
-    uint8_t err = readRegister<int16_t>(128u, raw, 4u);
+    int32_t raw = 0;
+    uint8_t err = readRegister<int32_t>(128u, raw, 4u);
     if (!err)
     {
         rpm = raw * 0.229f;
@@ -403,196 +403,117 @@ uint16_t DynamixelLL::calculateCRC(const uint8_t* data, uint16_t length)
 
 bool DynamixelLL::sendPacket(const uint8_t* packet, uint16_t length)
 {
-#ifdef DEBUG
+    if (!packet || length < 10 || !LL_USART_IsEnabled(_usart) || __get_IPSR() != 0U || (__get_PRIMASK() & 1U) != 0U)
     {
-        char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
-        int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL TX(%u):", (unsigned)length);
-        for (uint16_t i = 0; i < length && pos < (int)sizeof(hexBuf) - 4; ++i)
+        return false;
+    }
+
+    // Sync/bulk READ return one packet per requested motor.
+    // Other broadcasts (e.g. SYNC_WRITE) do not produce status packets.
+    uint8_t replies = packet[4] == DXL_BROADCAST_ID ? 0U : 1U;
+    if (packet[4] == DXL_BROADCAST_ID && packet[7] == DXL_INST_SYNC_READ)
+    {
+        if (length < 14)
         {
-            pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", packet[i]);
+            return false;
         }
-        LOG_DEBUG("%s\n", hexBuf);
+        replies = static_cast<uint8_t>(length - 14U);
     }
-#endif
-
-    // Verify USART is enabled
-    if (!LL_USART_IsEnabled(_usart))
+    else if (packet[4] == DXL_BROADCAST_ID && packet[7] == DXL_INST_BULK_READ)
     {
-        LOG_WARN("DXL: USART not enabled!\n");
+        if (length < 10 || (length - 10U) % 5U != 0U)
+        {
+            return false;
+        }
+        replies = static_cast<uint8_t>((length - 10U) / 5U);
+    }
+    if (replies > DXL_DMA_MAX_REPLIES)
+    {
         return false;
     }
 
-    if (!dxlDmaTransmit(_usart, packet, length, DXL_RX_TIMEOUT_MS))
-        return false;
-
-    if (activityCb)
+    // A preceding asynchronous no-reply command may still be transmitting.
+    // WFI sleeps the core until SysTick, DMA or USART interrupts wake it.
+    const uint32_t start = HAL_GetTick();
+    while (!dxlDmaStart(_usart, packet, length, replies, static_cast<uint32_t>(DXL_RX_TIMEOUT_MS) + 2U * replies))
     {
-        activityCb();
+        if (dxlDmaService(_usart) == DXL_DMA_ERROR)
+        {
+            dxlDmaCancel(_usart);
+        }
+        if (HAL_GetTick() - start >= DXL_RX_TIMEOUT_MS)
+        {
+            return false;
+        }
+        __WFI();
     }
-
-    return true;
+    for (;;)
+    {
+        const DxlDmaState state = dxlDmaService(_usart);
+        if (state == DXL_DMA_ERROR)
+        {
+            dxlDmaCancel(_usart);
+            return false;
+        }
+        if (state == DXL_DMA_RECEIVING || state == DXL_DMA_COMPLETE)
+        {
+            if (replies == 0)
+            {
+                dxlDmaCancel(_usart);
+            }
+            if (activityCb)
+            {
+                activityCb();
+            }
+            return true;
+        }
+        __WFI();
+    }
 }
 
 DxlStatusPacket DynamixelLL::receivePacket()
 {
     DxlStatusPacket result = {false, 0, 0, {}, 0};
-
-    // Clear latent error flags that may have accumulated from noise,
-    // floating bus, or self-echo during transmission.
-    // FE (Framing Error): triggered by floating line when no motor connected
-    // NE (Noise Error): triggered by noise on the bus
-    // ORE (Overrun Error): triggered by self-echo in half-duplex mode
-    if (LL_USART_IsActiveFlag_FE(_usart))
+    if (__get_IPSR() != 0U || (__get_PRIMASK() & 1U) != 0U)
     {
-        LL_USART_ClearFlag_FE(_usart);
-    }
-    if (LL_USART_IsActiveFlag_NE(_usart))
-    {
-        LL_USART_ClearFlag_NE(_usart);
-    }
-    if (LL_USART_IsActiveFlag_ORE(_usart))
-    {
-        LL_USART_ClearFlag_ORE(_usart);
+        return result;
     }
 
-    uint8_t buf[DXL_MAX_PACKET_SIZE];
-    uint16_t idx = 0;
-    bool headerFound = false;
-
-    uint32_t start = HAL_GetTick();
-
-    // locate the 4-byte header 0xFF 0xFF 0xFD 0x00
-    // Also handle the case where the first 0xFF might be missing (partial header)
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < DXL_MAX_PACKET_SIZE)
+    uint8_t frame[DXL_DMA_MAX_FRAME];
+    uint16_t length = 0;
+    for (;;)
     {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        const DxlDmaState state = dxlDmaService(_usart);
+        if (state == DXL_DMA_ERROR)
         {
-            buf[idx++] = byte;
-            if (idx >= 4 && buf[idx - 4] == 0xFF && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD &&
-                buf[idx - 1] == 0x00)
-            {
-                // Normalise header to start at index 0
-                buf[0] = 0xFF;
-                buf[1] = 0xFF;
-                buf[2] = 0xFD;
-                buf[3] = 0x00;
-                idx = 4;
-                headerFound = true;
-                break;
-            }
-            else if (idx >= 3 && buf[idx - 3] == 0xFF && buf[idx - 2] == 0xFD && buf[idx - 1] == 0x00)
-            {
-                // Partial header: first 0xFF was likely consumed as stale byte
-                buf[0] = 0xFF;
-                buf[1] = 0xFF;
-                buf[2] = 0xFD;
-                buf[3] = 0x00;
-                idx = 4;
-                headerFound = true;
-                break;
-            }
+            dxlDmaCancel(_usart);
+            return result;
         }
-    }
-
-    if (!headerFound)
-    {
-        LOG_WARN("DXL: header timeout\n");
-#ifdef DEBUG
-        // Debug: check if USART is still enabled and if any flags are set
-        LOG_DEBUG("DXL: USART ISR=0x%08lX UE=%u HDSEL=%u DEM=%u\n",
-                  (unsigned long)_usart->ISR,
-                  (unsigned)LL_USART_IsEnabled(_usart),
-                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_HDSEL),
-                  (unsigned)READ_BIT(_usart->CR3, USART_CR3_DEM));
-#endif
-        return result;
-    }
-
-    // read until we have the ID + 2-byte length field (7 bytes total)
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < 7)
-    {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        if (dxlDmaReadFrame(_usart, frame, &length))
         {
-            buf[idx++] = byte;
+            break;
         }
-    }
-    if (idx < 7)
-    {
-        LOG_WARN("DXL: header extension timeout\n");
-        return result;
-    }
 
-    result.id = buf[4];
-    uint16_t lengthField = (uint16_t)buf[5] | ((uint16_t)buf[6] << 8);
-    uint16_t totalPacketLength = 7u + lengthField;
-
-    // Protocol 2.0 status length includes instruction, error and CRC (minimum 4).
-    // Reject malformed packets before indexing the status payload or CRC.
-    if (lengthField < 4u || totalPacketLength > DXL_MAX_PACKET_SIZE)
-    {
-        LOG_WARN("DXL: packet too large (%u)\n", totalPacketLength);
-        return result;
-    }
-
-    // read remaining bytes
-    while ((HAL_GetTick() - start) < DXL_RX_TIMEOUT_MS && idx < totalPacketLength)
-    {
-        uint8_t byte = 0;
-        if (dxlDmaReceiveByte(_usart, &byte))
+        if (state == DXL_DMA_IDLE || state == DXL_DMA_COMPLETE)
         {
-            buf[idx++] = byte;
+            dxlDmaCancel(_usart);
+            return result;
         }
+        __WFI();
     }
-    if (idx < totalPacketLength)
+
+    // DMA transaction framing already verified the header, ID and CRC.
+    const uint16_t lengthField = static_cast<uint16_t>(frame[5]) | (static_cast<uint16_t>(frame[6]) << 8);
+    if (length < 11U || static_cast<uint32_t>(lengthField) + 7U != length || lengthField < 4U ||
+        lengthField - 4U > sizeof(result.data))
     {
-        LOG_WARN("DXL: incomplete packet (got %u/%u)\n", idx, totalPacketLength);
         return result;
     }
 
-#ifdef DEBUG
-    {
-        char hexBuf[DXL_MAX_PACKET_SIZE * 3 + 8];
-        int pos = snprintf(hexBuf, sizeof(hexBuf), "DXL RX(%u):", totalPacketLength);
-        for (uint16_t i = 0; i < totalPacketLength && pos < (int)sizeof(hexBuf) - 4; ++i)
-        {
-            pos += snprintf(hexBuf + pos, sizeof(hexBuf) - pos, " %02X", buf[i]);
-        }
-        LOG_DEBUG("%s\n", hexBuf);
-    }
-#endif
-
-    // verify instruction byte (must be 0x55 for status packet)
-    if (buf[7] != DXL_STATUS_INST)
-    {
-        LOG_DEBUG("DXL: echo detected, retrying\n");
-        return receivePacket(); // discard echo, try again
-    }
-
-    result.error = buf[8];
-    uint8_t paramLength = (uint8_t)(lengthField - 4u);
-    if (paramLength > sizeof(result.data))
-    {
-        LOG_WARN("DXL: status data too long (%u)\n", paramLength);
-        return result;
-    }
-    result.dataLength = paramLength;
-    for (uint8_t i = 0; i < paramLength && i < (uint8_t)sizeof(result.data); ++i)
-    {
-        result.data[i] = buf[9 + i];
-    }
-
-    // verify CRC
-    uint16_t receivedCRC = (uint16_t)buf[9 + paramLength] | ((uint16_t)buf[10 + paramLength] << 8);
-    uint16_t computedCRC = calculateCRC(buf, 9u + paramLength);
-
-    if (receivedCRC != computedCRC)
-    {
-        LOG_WARN("DXL: CRC mismatch (got %04X, expected %04X)\n", receivedCRC, computedCRC);
-        return result;
-    }
-
+    result.id = frame[4];
+    result.error = frame[8];
+    result.dataLength = static_cast<uint8_t>(lengthField - 4U);
+    memcpy(result.data, &frame[9], result.dataLength);
     result.valid = true;
     if (activityCb)
     {
@@ -660,8 +581,12 @@ bool DynamixelLL::syncWrite(uint16_t address, uint8_t dataLength, const uint8_t*
     const uint16_t fixedParam = 4u;               // addr(2) + datalen(2)
     const uint16_t deviceBlock = 1u + dataLength; // id + data
     const uint16_t paramLen = fixedParam + deviceBlock * count;
+    if (!ids || !values || count == 0U || dataLength == 0U || dataLength > 4U || paramLen > DXL_DMA_MAX_PACKET - 10U)
+    {
+        return false;
+    }
 
-    uint8_t params[paramLen];
+    uint8_t params[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
     params[idx++] = (uint8_t)(address & 0xFF);
     params[idx++] = (uint8_t)(address >> 8);
@@ -678,11 +603,66 @@ bool DynamixelLL::syncWrite(uint16_t address, uint8_t dataLength, const uint8_t*
     return sendSyncWritePacket(params, paramLen);
 }
 
+bool DynamixelLL::trySetGoalVelocityRpm(const float* rpmValues, uint8_t count)
+{
+    if (!_sync || !_motorIDs || !rpmValues || count != _numMotors || count == 0 || count > DXL_DMA_MAX_REPLIES)
+    {
+        return false;
+    }
+
+    // Fixed-size instruction buffer; DMA copies it into bus-owned SRAM.
+    uint8_t packet[10U + 4U + DXL_DMA_MAX_REPLIES * 5U] = {};
+    const uint16_t parametersLength = static_cast<uint16_t>(4U + 5U * count);
+    const uint16_t packetLength = static_cast<uint16_t>(10U + parametersLength);
+    const uint16_t lengthField = static_cast<uint16_t>(parametersLength + 3U);
+    packet[0] = 0xFF;
+    packet[1] = 0xFF;
+    packet[2] = 0xFD;
+    packet[3] = 0x00;
+    packet[4] = DXL_BROADCAST_ID;
+    packet[5] = static_cast<uint8_t>(lengthField);
+    packet[6] = static_cast<uint8_t>(lengthField >> 8);
+    packet[7] = DXL_INST_SYNC_WRITE;
+    packet[8] = 104U; // Goal Velocity register address (0x0068)
+    packet[9] = 0U;
+    packet[10] = 4U; // 32-bit signed raw velocity
+    packet[11] = 0U;
+
+    uint16_t idx = 12U;
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        float rpm = rpmValues[i];
+        if (rpm > 30.0f)
+        {
+            rpm = 30.0f;
+        }
+        if (rpm < -30.0f)
+        {
+            rpm = -30.0f;
+        }
+        const int32_t raw = static_cast<int32_t>(rpm / 0.229f);
+        const uint32_t encoded = static_cast<uint32_t>(raw);
+        packet[idx++] = _motorIDs[i];
+        for (uint8_t byte = 0; byte < 4U; ++byte)
+        {
+            packet[idx++] = static_cast<uint8_t>(encoded >> (8U * byte));
+        }
+    }
+    const uint16_t crc = calculateCRC(packet, static_cast<uint16_t>(packetLength - 2U));
+    packet[idx++] = static_cast<uint8_t>(crc);
+    packet[idx++] = static_cast<uint8_t>(crc >> 8);
+    return dxlDmaStart(_usart, packet, packetLength, 0U, DXL_RX_TIMEOUT_MS);
+}
+
 bool DynamixelLL::sendSyncWritePacket(const uint8_t* parameters, uint16_t parametersLength)
 {
+    if (!parameters || parametersLength > DXL_DMA_MAX_PACKET - 10U)
+    {
+        return false;
+    }
     uint16_t lengthField = parametersLength + 3u;
     uint16_t pktSize = 10u + parametersLength;
-    uint8_t packet[pktSize];
+    uint8_t packet[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
 
     packet[idx++] = 0xFF;
@@ -703,10 +683,15 @@ bool DynamixelLL::sendSyncWritePacket(const uint8_t* parameters, uint16_t parame
 
 bool DynamixelLL::sendSyncReadPacket(uint16_t address, uint8_t dataLength, const uint8_t* ids, uint8_t count)
 {
+    if (!ids || count == 0U || count > DXL_DMA_MAX_REPLIES || dataLength == 0U ||
+        dataLength > sizeof(DxlStatusPacket::data))
+    {
+        return false;
+    }
     const uint16_t paramLen = 4u + count;
     uint16_t lengthField = paramLen + 3u;
     uint16_t pktSize = 10u + paramLen;
-    uint8_t packet[pktSize];
+    uint8_t packet[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
 
     packet[idx++] = 0xFF;
@@ -734,13 +719,22 @@ bool DynamixelLL::sendSyncReadPacket(uint16_t address, uint8_t dataLength, const
 bool DynamixelLL::bulkWrite(
     const uint8_t* ids, uint16_t* addresses, uint8_t* dataLengths, uint32_t* values, uint8_t count)
 {
-    uint16_t paramBlockLength = 0;
-    for (uint8_t i = 0; i < count; i++)
+    if (!ids || !addresses || !dataLengths || !values || count == 0U)
     {
-        paramBlockLength += 5 + dataLengths[i];
+        return false;
+    }
+    uint16_t paramBlockLength = 0;
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        if (dataLengths[i] == 0U || dataLengths[i] > 4U ||
+            static_cast<uint32_t>(paramBlockLength) + 5U + dataLengths[i] > DXL_DMA_MAX_PACKET - 10U)
+        {
+            return false;
+        }
+        paramBlockLength = static_cast<uint16_t>(paramBlockLength + 5U + dataLengths[i]);
     }
 
-    uint8_t params[paramBlockLength];
+    uint8_t params[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
 
     for (uint8_t i = 0; i < count; i++)
@@ -764,34 +758,59 @@ DynamixelLL::bulkRead(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLeng
 {
     if (!sendBulkReadPacket(ids, addresses, dataLengths, count))
     {
-        LOG_WARN("DXL: error sending Bulk Read packet\n");
-        return 1;
+        return 1U;
     }
 
-    uint8_t retError = 0;
-    for (uint8_t i = 0; i < count; i++)
+    for (uint8_t i = 0; i < count; ++i)
     {
-        DxlStatusPacket response = receivePacket();
-        if (!response.valid || response.error != 0)
-        {
-            LOG_WARN("DXL: Bulk Read error from id %u: 0x%02X\n", ids[i], response.error);
-            retError = response.error;
-        }
-        values[i] = 0;
-        for (uint8_t j = 0; j < response.dataLength; j++)
-        {
-            values[i] |= (static_cast<uint32_t>(response.data[j]) << (8 * j));
-        }
+        values[i] = 0U;
     }
 
-    return retError;
+    uint8_t status = 0U;
+    for (uint8_t received = 0; received < count; ++received)
+    {
+        const DxlStatusPacket response = receivePacket();
+        if (!response.valid || response.error != 0U)
+        {
+            status = response.valid ? response.error : 1U;
+            continue;
+        }
+        bool matched = false;
+        for (uint8_t i = 0; i < count; ++i)
+        {
+            if (ids[i] != response.id)
+            {
+                continue;
+            }
+            matched = true;
+            if (response.dataLength != dataLengths[i] || response.dataLength > 4U)
+            {
+                status = 1U;
+                break;
+            }
+            for (uint8_t j = 0; j < response.dataLength; ++j)
+            {
+                values[i] |= static_cast<uint32_t>(response.data[j]) << (8U * j);
+            }
+            break;
+        }
+        if (!matched)
+        {
+            status = 1U;
+        }
+    }
+    return status;
 }
 
 bool DynamixelLL::sendBulkWritePacket(const uint8_t* parameters, uint16_t parametersLength)
 {
+    if (!parameters || parametersLength > DXL_DMA_MAX_PACKET - 10U)
+    {
+        return false;
+    }
     uint16_t lengthField = parametersLength + 3u;
     uint16_t pktSize = 10u + parametersLength;
-    uint8_t packet[pktSize];
+    uint8_t packet[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
 
     packet[idx++] = 0xFF;
@@ -812,10 +831,21 @@ bool DynamixelLL::sendBulkWritePacket(const uint8_t* parameters, uint16_t parame
 
 bool DynamixelLL::sendBulkReadPacket(const uint8_t* ids, uint16_t* addresses, uint8_t* dataLengths, uint8_t count)
 {
+    if (!ids || !addresses || !dataLengths || count == 0U || count > DXL_DMA_MAX_REPLIES)
+    {
+        return false;
+    }
+    for (uint8_t i = 0; i < count; ++i)
+    {
+        if (dataLengths[i] == 0U || dataLengths[i] > sizeof(uint32_t))
+        {
+            return false;
+        }
+    }
     const uint16_t paramLen = 5u * count;
     uint16_t lengthField = paramLen + 3u;
     uint16_t pktSize = 10u + paramLen;
-    uint8_t packet[pktSize];
+    uint8_t packet[DXL_DMA_MAX_PACKET] = {};
     uint16_t idx = 0;
 
     packet[idx++] = 0xFF;
