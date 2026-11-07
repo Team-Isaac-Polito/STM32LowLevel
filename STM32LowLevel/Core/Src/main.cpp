@@ -41,6 +41,7 @@
 #include "Debug.h"
 #include "CanWrapper.h"
 #include "DynamixelLL.h"
+#include "DynamixelDMA.h"
 #include "AbsoluteEncoder.h"
 #include "IMU.h"
 #include "Battery.h"
@@ -101,6 +102,7 @@ static DynamixelLL motLeft(USART2, SERVO_TRACTION_L_ID);
 static DynamixelLL motRight(USART2, SERVO_TRACTION_R_ID);
 static const uint8_t tractionIds[] = {SERVO_TRACTION_R_ID, SERVO_TRACTION_L_ID};
 static float speedsDxl[2] = {0.0f, 0.0f};
+static bool tractionGoalPending = false;
 
 // Battery
 static Battery battery;
@@ -141,6 +143,8 @@ static const uint8_t armMotionMotorIds[] = {SERVO_ARM_1A_PITCH_ID,
                                             SERVO_ARM_3_ROLL_ID,
                                             SERVO_ARM_4_PITCH_ID,
                                             SERVO_ARM_5_ROLL_ID};
+static float armVelocityPending[6] = {};
+static bool armVelocityGoalPending = false;
 
 // Arm home positions (DXL ext-pos units) — default from definitions.h ARM_DEFAULT_HOME
 static const int32_t armDefaults[] = ARM_DEFAULT_HOME;
@@ -450,6 +454,25 @@ extern "C" int main(void)
     {
         uint32_t now = HAL_GetTick();
 
+        // Process DMA progress without per-byte CPU polling.
+        if (dxlDmaService(USART2) == DXL_DMA_ERROR)
+        {
+            dxlDmaCancel(USART2);
+            // A lost control packet must not leave a stale nonzero setpoint
+            // queued for a later retry.
+            speedsDxl[0] = 0.0f;
+            speedsDxl[1] = 0.0f;
+            tractionGoalPending = true;
+#ifdef MODC_ARM
+            for (float& rpm : armVelocityPending)
+            {
+                rpm = 0.0f;
+            }
+            armVelocityGoalPending = true;
+#endif
+            LOG_WARN("[DXL] transport error, zero setpoints queued\n");
+        }
+
         // Health checks (1 Hz)
         if (now - timeBat >= DT_BAT)
         {
@@ -488,14 +511,37 @@ extern "C" int main(void)
             canActive = false;
             speedsDxl[0] = 0.0f;
             speedsDxl[1] = 0.0f;
-            dxlTraction.setGoalVelocityRpm(speedsDxl);
-            LOG_WARN("[main] CAN timeout, motors stopped\n");
+            tractionGoalPending = true;
+#ifdef MODC_ARM
+            for (float& rpm : armVelocityPending)
+            {
+                rpm = 0.0f;
+            }
+            armVelocityGoalPending = true;
+#endif
+            LOG_WARN("[main] CAN timeout, stop setpoint queued\n");
         }
 
 #ifdef MODC_ARM
         // Beak gripper state machine
         tickBeakStateMachine(now);
 #endif // MODC_ARM
+
+        // Latest-value mailboxes: do not accumulate stale motion commands.
+        // The traction setpoint takes priority over arm updates.
+        if (tractionGoalPending)
+        {
+            if (dxlTraction.trySetGoalVelocityRpm(speedsDxl, 2U))
+            {
+                tractionGoalPending = false;
+            }
+        }
+#ifdef MODC_ARM
+        else if (armVelocityGoalPending && armMotionSync.trySetGoalVelocityRpm(armVelocityPending, 6U))
+        {
+            armVelocityGoalPending = false;
+        }
+#endif
 
         /* USER CODE END WHILE */
 
@@ -1317,8 +1363,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             speedsDxl[0] *= coeff;
             speedsDxl[1] *= coeff;
 
-            float goal[2] = {speedsDxl[0], speedsDxl[1]};
-            dxlTraction.setGoalVelocityRpm(goal);
+            // Send the newest setpoint when the DMA bus becomes free.
+            tractionGoalPending = true;
             LOG_DEBUG("[CAN] MOTOR_SETPOINT: L=%.1f R=%.1f RPM\n", speedsDxl[0], speedsDxl[1]);
             break;
         }
@@ -1337,7 +1383,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
                                        jointVelocity[3] / DXL_RPM_TO_RAD_S,
                                        -jointVelocity[4] / DXL_RPM_TO_RAD_S,
                                        -jointVelocity[5] / DXL_RPM_TO_RAD_S};
-            armMotionSync.setGoalVelocityRpm(armVelocityRpm);
+            memcpy(armVelocityPending, armVelocityRpm, sizeof(armVelocityPending));
+            armVelocityGoalPending = true;
             break;
         }
 

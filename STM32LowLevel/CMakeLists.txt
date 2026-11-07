@@ -73,7 +73,7 @@ target_include_directories(debug_lib PUBLIC
 # Inherit STM32G474xx / USE_FULL_LL_DRIVER / USE_HAL_DRIVER from stm32cubemx
 target_link_libraries(debug_lib PUBLIC stm32cubemx)
 
-# Dynamixel DMA transport (USART2 DMA1 channels 1/2)
+# Dynamixel DMA transport (USART2 DMA1 CH1/2, USART3 DMA1 CH3/4)
 add_library(dynamixeldma STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/Lib/DynamixelDMA/DynamixelDMA.cpp
 )
