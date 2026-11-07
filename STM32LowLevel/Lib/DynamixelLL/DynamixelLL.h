@@ -1,6 +1,6 @@
 /**
  * @file DynamixelLL.h
- * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 (USART2 LL backend).
+ * @brief Low-level Dynamixel Protocol 2.0 driver for STM32G474 USART2/3.
  *
  * e-manual for DYNAMIXEL protocol 2.0: https://emanual.robotis.com/docs/en/dxl/protocol2/
  * e-Manual for DYNAMIXEL XL430-W250: https://emanual.robotis.com/docs/en/dxl/x/xl430-w250/
@@ -19,6 +19,8 @@
 #define DYNAMIXEL_LL_H
 
 #include <cstdint>
+#include <cstring>
+#include <type_traits>
 
 #include "stm32g4xx_ll_usart.h"
 #include "stm32g4xx_ll_crc.h"
@@ -470,6 +472,16 @@ class DynamixelLL
     template <uint8_t N>
     uint8_t setProfileAcceleration(const uint32_t (&profileAcceleration)[N]);
 
+    /**
+     * @brief Queue a broadcast velocity setpoint without waiting for DMA TX.
+     * @param rpmValues RPM values in the configured sync group's ID order.
+     * @param count Number of values; must equal the sync group size.
+     * @return True when DMA accepted the packet; false while its bus is occupied.
+     * @note Intended for frequent control-loop setpoints. The caller should retain
+     *       and retry the latest requested values on a busy bus.
+     */
+    bool trySetGoalVelocityRpm(const float* rpmValues, uint8_t count);
+
     /** @brief Set goal velocity (RPM) for each motor in the sync group. */
     template <uint8_t N>
     uint8_t setGoalVelocityRpm(const float (&rpmValues)[N]);
@@ -516,8 +528,8 @@ class DynamixelLL
     /**
      * @brief Transmit a raw byte packet over the USART (blocking, LL).
      *
-     * Waits for the TC (Transmission Complete) flag before returning so that
-     * the RS-485 DE line is de-asserted before the servo replies.
+     * Sleeps while DMA transmits. USART TC switches the level shifter to RX
+     * before returning; response frames are then captured by circular DMA.
      *
      * @param packet Pointer to packet bytes.
      * @param length Number of bytes to transmit.
@@ -526,11 +538,10 @@ class DynamixelLL
     bool sendPacket(const uint8_t* packet, uint16_t length);
 
     /**
-     * @brief Receive a Dynamixel status packet with timeout (blocking, LL).
+     * @brief Receive and validate a status packet from the circular DMA buffer.
      *
-     * Searches for the 4-byte header (0xFF 0xFF 0xFD 0x00), assembles the
-     * full packet, verifies the CRC-16-IBM, and discards echo bytes that
-     * appear in half-duplex mode (byte 7 ≠ 0x55 → recurse).
+     * Waits for a validated status frame from the shared DMA transaction.
+     * The transport handles framing, CRC and unexpected packets.
      *
      * @return Decoded DxlStatusPacket; `valid` is false on timeout or CRC error.
      */

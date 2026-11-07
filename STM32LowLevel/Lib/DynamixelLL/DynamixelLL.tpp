@@ -6,6 +6,8 @@
 template <typename T>
 uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
 {
+    static_assert(std::is_integral<T>::value && sizeof(T) <= 4U,
+                  "Dynamixel register results must be 1, 2, or 4-byte integers");
     // Build a 14-byte READ instruction packet:
     // [Header (4) | Servo ID (1) | Length (2) | Instruction (1) | Parameters (4) | CRC (2)]
     uint8_t packet[14];
@@ -47,21 +49,23 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
 
     // Receive and process the response.
     DxlStatusPacket response = receivePacket();
-    if (!response.valid)
+    if (!response.valid || response.dataLength != size || size != sizeof(T))
     {
-        LOG_WARN("DXL: invalid status packet received\n");
-        return 1u; // Return error when no valid status packet received
+        LOG_WARN("DXL: invalid or unexpected register response\n");
+        return 1u;
     }
     if (response.error != 0)
     {
         LOG_WARN("DXL: read error 0x%02X\n", response.error);
     }
 
-    value = 0;
-    for (uint8_t i = 0; i < response.dataLength; i++)
+    // Copy the little-endian register bits without signed-shift overflow.
+    uint32_t raw = 0;
+    for (uint8_t i = 0; i < response.dataLength; ++i)
     {
-        value |= (T)(response.data[i]) << (8 * i);
+        raw |= static_cast<uint32_t>(response.data[i]) << (8U * i);
     }
+    std::memcpy(&value, &raw, sizeof(T));
 
     return response.error;
 }
@@ -69,6 +73,8 @@ uint8_t DynamixelLL::readRegister(uint16_t address, T& value, uint8_t size)
 template <typename T>
 uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_t* ids, T* values, uint8_t count)
 {
+    static_assert(std::is_integral<T>::value && sizeof(T) <= 4U,
+                  "Dynamixel sync results must be 1, 2, or 4-byte integers");
     // Send Sync Read Instruction Packet.
     if (!sendSyncReadPacket(address, dataLength, ids, count))
     {
@@ -88,9 +94,10 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
     {
         DxlStatusPacket response = receivePacket();
         received++;
-        if (!response.valid)
+        if (!response.valid || response.dataLength != dataLength || dataLength != sizeof(T))
         {
-            LOG_WARN("DXL: invalid status packet received\n");
+            LOG_WARN("DXL: invalid sync read response\n");
+            retError = 1U;
             continue;
         }
         if (response.error != 0)
@@ -99,17 +106,25 @@ uint8_t DynamixelLL::syncRead(uint16_t address, uint8_t dataLength, const uint8_
             retError = response.error;
             continue;
         }
-        // Find the index in the provided ids array that matches the response id.
+        // Replies need not arrive in the order of requested servo IDs.
+        bool matched = false;
         for (uint8_t i = 0; i < count; i++)
         {
             if (ids[i] == response.id)
             {
-                for (uint8_t j = 0; j < response.dataLength; j++)
+                matched = true;
+                uint32_t raw = 0;
+                for (uint8_t j = 0; j < response.dataLength; ++j)
                 {
-                    values[i] |= (T)(response.data[j]) << (8 * j);
+                    raw |= static_cast<uint32_t>(response.data[j]) << (8U * j);
                 }
+                std::memcpy(&values[i], &raw, sizeof(T));
                 break;
             }
+        }
+        if (!matched)
+        {
+            retError = 1U;
         }
     }
     return retError;
@@ -465,7 +480,7 @@ uint8_t DynamixelLL::getPresentVelocityRpm(float (&rpms)[N])
     {
         return 1;
     }
-    int16_t temp[_numMotors];
+    int32_t temp[_numMotors];
     uint8_t err = syncRead(128, 4, _motorIDs, temp, _numMotors);
     if (err != 0)
     {
