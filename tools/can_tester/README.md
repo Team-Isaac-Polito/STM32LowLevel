@@ -6,8 +6,10 @@ commands and monitoring CAN bus traffic in real time.
 
 ## Hardware
 
-- **USB2CAN adapter**: Innomaker USB2CAN MS124 ([Part-DB #233](https://part-db.teamisaac.it/en/part/233/info))
-- **Driver**: `gs_usb` — uses the WinUSB class driver on Windows, native kernel driver on Linux
+- **USB2CAN adapters**: Innomaker USB2CAN MS124
+  ([Part-DB #233](https://part-db.teamisaac.it/en/part/233/info)) or
+  [Ixxat USB-to-CAN/FD Standard](https://www.hms-networks.com/p/1-01-0381-12001-usb-to-can-fd-standard)
+- **Driver/backend**: `gs_usb`, Ixxat VCI on Windows, or SocketCAN on Linux
 - **Bitrate**: 1 Mbit/s arbitration / 2 Mbit/s data (CAN FD with BRS, Extended 29-bit identifiers)
 
 ## Prerequisites
@@ -110,6 +112,25 @@ On ARM64 Windows you must build `libusb` from source:
 
 6. Then follow the same WinUSB driver steps described in the **Windows (WinUSB)** upper setup section above.
 
+### Ixxat USB-to-CAN/FD Standard
+
+On Windows, install the
+[Ixxat VCI V4 driver](https://support.hms-networks.com/hc/en-us/articles/6369431122194-Downloading-VCI-Driver-for-Windows)
+and check that the adapter is visible in the Ixxat tools. The `python-can`
+Ixxat backend uses a numeric channel, normally `0` for the first channel.
+
+```powershell
+# Interactive CLI
+python -m tools.can_tester -i ixxat -c 0 -b 1000000 -D 2000000
+
+# Web dashboard
+python -m tools.can_tester.web_dashboard -i ixxat -c 0 -b 1000000 -D 2000000
+```
+
+The `ixxat` backend is for Windows VCI. On Linux, install a compatible Ixxat
+SocketCAN driver, configure the interface as `can0`, and use
+`-i socketcan -c can0`. Native macOS support has not been validated.
+
 ---
 
 ## Usage
@@ -122,6 +143,9 @@ python -m tools.can_tester.web_dashboard -i gs_usb -c 0 --port 8080
 
 # Start with SocketCAN (Linux)
 python -m tools.can_tester.web_dashboard -i socketcan -c can0
+
+# Start with Ixxat VCI (Windows)
+python -m tools.can_tester.web_dashboard -i ixxat -c 0
 
 # Demo mode — no hardware required (virtual bus)
 python -m tools.can_tester.web_dashboard --demo
@@ -158,6 +182,9 @@ python -m tools.can_tester -i socketcan -c can0
 
 # Windows / Linux (gs_usb)
 python -m tools.can_tester -i gs_usb -c 0
+
+# Windows (Ixxat VCI)
+python -m tools.can_tester -i ixxat -c 0
 
 # Target a specific module
 python -m tools.can_tester -i gs_usb -c 0 -m MK2_MOD2
@@ -205,12 +232,14 @@ can_tester/
 ├── protocol.py          # CAN ID / MsgType definitions (synced with communication.h)
 ├── header_parser.py     # C preprocessor for communication.h / mod_config.h validation
 ├── codec.py             # Payload encode/decode (struct-based)
+├── connection.py        # Shared python-can bus setup
 ├── sender.py            # High-level message sender
 ├── monitor.py           # Real-time bus monitor with named filters
 ├── cli.py               # Interactive REPL
 ├── web_dashboard.py     # Flask web UI with SSE
 ├── test_sequences.py    # Pre-built test routines
 ├── test_dry.py          # Offline validation tests
+├── test_connection.py   # Adapter setup and frame flag tests
 ├── requirements.txt     # Python dependencies
 ├── procedure.md         # Testing procedures and checklists
 └── README.md            # This file
