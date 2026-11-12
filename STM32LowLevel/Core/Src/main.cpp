@@ -1214,6 +1214,22 @@ static void sendFeedback(void)
 #ifdef MODC_ARM
     static constexpr float RPM_TO_RADS = 2.0f * 3.14159265f / 60.0f;
 
+    // Unified arm position feedback: 6 joint positions relative to calibrated home.
+    int32_t motorPosition[6];
+    if (armMotionSync.getPresentPosition(motorPosition) == 0U)
+    {
+        const float pos1a = static_cast<float>(motorPosition[0] - armPos0Mot1Lr[0]) * DXL_TO_RAD;
+        const float pos1b = static_cast<float>(motorPosition[1] - armPos0Mot1Lr[1]) * DXL_TO_RAD;
+
+        float armPosition[6] = {(-pos1a + pos1b) * 0.5f, // base pitch (differential)
+                                (-pos1a - pos1b) * 0.5f, // base roll (differential)
+                                static_cast<float>(motorPosition[2] - armPos0Mot2) * DXL_TO_RAD,
+                                static_cast<float>(motorPosition[3] - armPos0Mot3) * DXL_TO_RAD,
+                                static_cast<float>(motorPosition[4] - armPos0Mot4) * DXL_TO_RAD,
+                                static_cast<float>(motorPosition[5] - armPos0Mot5) * DXL_TO_RAD};
+        canW.sendMessage(ARM_POSITION_FEEDBACK, armPosition, sizeof(armPosition));
+    }
+
     // Unified arm velocity feedback: J1a, J1b, J2, J3, J4, J5.
     float armVelocityRpm[6] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     armMotionSync.getPresentVelocityRpm(armVelocityRpm);
