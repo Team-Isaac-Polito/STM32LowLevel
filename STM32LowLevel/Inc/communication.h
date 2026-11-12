@@ -56,6 +56,7 @@
 #define LED_HP_BRIGHTNESS 0x75           ///< LED HP board brightness  — uint8 (0=off, 255=max)
 
 // Arm velocity feedback — MK2 MOD1 only (0x8X)
+#define ARM_POSITION_FEEDBACK 0x84   ///< Arm J1a/J1b/J2/J3/J4/J5 position feedback — Float×6, rad
 #define ARM_VELOCITY_SETPOINT 0x86   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity setpoint — Float×6, rad/s
 #define ARM_VELOCITY_FEEDBACK 0x88   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity feedback — Float×6, rad/s
 
