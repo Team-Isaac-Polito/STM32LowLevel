@@ -37,6 +37,7 @@ from typing import Optional
 import can
 
 from .protocol import ModuleAddress
+from .connection import open_can_bus
 from .sender import CanSender
 from .monitor import CanMonitor, NAMED_FILTERS
 from .test_sequences import TESTS
@@ -292,7 +293,7 @@ def main() -> None:
           f"channel={args.channel}, bitrate={args.bitrate}...")
 
     try:
-        bus = can.Bus(
+        bus = open_can_bus(
             interface=args.interface,
             channel=args.channel,
             bitrate=args.bitrate,
@@ -302,9 +303,10 @@ def main() -> None:
     except Exception as e:
         print(f"Failed to connect: {e}")
         print("\nMake sure:")
-        print("  - USB2CAN adapter is connected")
+        print("  - A compatible CAN adapter is connected")
         print("  - On Linux: sudo ip link set can0 up type can bitrate 1000000 dbitrate 2000000 fd on")
         print("  - On Windows: install gs_usb driver for Innomaker USB2CAN")
+        print("  - On Windows with Ixxat: install VCI V4 and use -i ixxat -c 0")
         sys.exit(1)
 
     print("Connected.\n")
