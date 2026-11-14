@@ -58,7 +58,7 @@
 #define MODC_JOINT                       ///< Module has inter-module joint
 #define MODC_IMU                         ///< Module has LSM6DSL IMU
 #define MODC_CABLE_ROL                   ///< Module has cable roll motor
-#define SERVO_CABLE_ROL_ID 10            ///< Cable roll XM540 servo ID
+#define SERVO_CABLE_ROL_ID 9             ///< Cable roll XM540 servo ID
 
 #else
 #error "Unknown MODULE_DEFINE value. Valid values: MK2_MOD1 (0x21), MK2_MOD2 (0x22), MK2_MOD3 (0x23)"

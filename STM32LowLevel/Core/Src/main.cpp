@@ -178,14 +178,14 @@ static int32_t jointPosMot2 = 0;
 #ifdef MODC_CABLE_ROL
 // Cable roll Dynamixel motor (USART2 bus, ID 10)
 static DynamixelLL cableRolMotor(USART2, SERVO_CABLE_ROL_ID);
-static int32_t cableRolPos0 = 0;       ///< Home position (DXL units)
-static int32_t cableRolPos = 0;        ///< Current setpoint (DXL units)
-static int32_t cableRolOldPos = 0;     ///< Previous setpoint for deadzone
-static bool cableRolActive = false;    ///< True when cable roll has been initialized
+static int32_t cableRolPos0 = 0;    ///< Home position (DXL units)
+static int32_t cableRolPos = 0;     ///< Current setpoint (DXL units)
+static int32_t cableRolOldPos = 0;  ///< Previous setpoint for deadzone
+static bool cableRolActive = false; ///< True when cable roll has been initialized
 // Active compliance state
-static uint32_t cableRolCtrlMs = 0U;   ///< Timestamp of last control step
+static uint32_t cableRolCtrlMs = 0U;                             ///< Timestamp of last control step
 static int16_t cableRolTargetCurrent = CABLE_ROL_TARGET_CURRENT; ///< Target current (= desired tension)
-static bool cableRolCompliance = false; ///< True when active compliance is enabled
+static bool cableRolCompliance = false;                          ///< True when active compliance is enabled
 #endif
 
 /* USER CODE END PV */
@@ -1282,9 +1282,15 @@ static void DXL_CABLE_ROL_INIT(void)
  */
 static void tickCableRolCompliance(uint32_t now)
 {
-    if (!cableRolActive || !cableRolCompliance) return;
+    if (!cableRolActive || !cableRolCompliance)
+    {
+        return;
+    }
 
-    if ((now - cableRolCtrlMs) < CABLE_ROL_CTRL_MS) return;
+    if ((now - cableRolCtrlMs) < CABLE_ROL_CTRL_MS)
+    {
+        return;
+    }
     cableRolCtrlMs = now;
 
     // Read present current (tension proxy) and actual position
@@ -1321,8 +1327,14 @@ static void tickCableRolCompliance(uint32_t now)
     int32_t adjustment = posAdjustment + currentAdjustment;
 
     // Clamp adjustment per step for smooth motion
-    if (adjustment > CABLE_ROL_MAX_ADJUST) adjustment = CABLE_ROL_MAX_ADJUST;
-    if (adjustment < -CABLE_ROL_MAX_ADJUST) adjustment = -CABLE_ROL_MAX_ADJUST;
+    if (adjustment > CABLE_ROL_MAX_ADJUST)
+    {
+        adjustment = CABLE_ROL_MAX_ADJUST;
+    }
+    if (adjustment < -CABLE_ROL_MAX_ADJUST)
+    {
+        adjustment = -CABLE_ROL_MAX_ADJUST;
+    }
 
     // Apply adjustment to goal position
     int32_t newPos = cableRolPos + adjustment;
@@ -1333,8 +1345,8 @@ static void tickCableRolCompliance(uint32_t now)
         cableRolPos = newPos;
         cableRolMotor.setGoalPositionEpcm(cableRolPos);
         cableRolOldPos = cableRolPos;
-        LOG_DEBUG("[CableRol] Compliance: cur=%d posDev=%d adj=%d pos=%d\n",
-                  absCurrent, posDev, adjustment, cableRolPos);
+        LOG_DEBUG(
+            "[CableRol] Compliance: cur=%d posDev=%d adj=%d pos=%d\n", absCurrent, posDev, adjustment, cableRolPos);
     }
 
     // Safety: check hardware error
@@ -1629,9 +1641,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
                 else
                 {
                     uint64_t dword = static_cast<uint64_t>(static_cast<uint32_t>(curPos)) |
-                                    (static_cast<uint64_t>(HOME_FLASH_MAGIC) << 32U);
-                    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
-                                          HOME_FLASH_PAGE_ADDR + 32U, dword) == HAL_OK)
+                                     (static_cast<uint64_t>(HOME_FLASH_MAGIC) << 32U);
+                    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, HOME_FLASH_PAGE_ADDR + 32U, dword) == HAL_OK)
                     {
                         LOG_INFO("[Flash] Cable roll home saved: %d\n", curPos);
                     }
@@ -1706,7 +1717,8 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
                 cableRolTargetCurrent = targetCurrent;
                 cableRolCtrlMs = HAL_GetTick();
                 LOG_INFO("[CableRol] Compliance ON, target current = %d (~%.0f mA)\n",
-                         targetCurrent, (float)targetCurrent * 2.69f);
+                         targetCurrent,
+                         (float)targetCurrent * 2.69f);
             }
             else
             {
