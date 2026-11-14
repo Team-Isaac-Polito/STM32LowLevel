@@ -175,6 +175,19 @@ static int32_t jointOldPosMot1Lr[2] = {0, 0};
 static int32_t jointPosMot2 = 0;
 #endif
 
+#ifdef MODC_CABLE_ROL
+// Cable roll Dynamixel motor (USART2 bus, ID 10)
+static DynamixelLL cableRolMotor(USART2, SERVO_CABLE_ROL_ID);
+static int32_t cableRolPos0 = 0;       ///< Home position (DXL units)
+static int32_t cableRolPos = 0;        ///< Current setpoint (DXL units)
+static int32_t cableRolOldPos = 0;     ///< Previous setpoint for deadzone
+static bool cableRolActive = false;    ///< True when cable roll has been initialized
+// Active compliance state
+static uint32_t cableRolCtrlMs = 0U;   ///< Timestamp of last control step
+static int16_t cableRolTargetCurrent = CABLE_ROL_TARGET_CURRENT; ///< Target current (= desired tension)
+static bool cableRolCompliance = false; ///< True when active compliance is enabled
+#endif
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -201,6 +214,10 @@ static void ledHpSetBrightness(uint8_t brightness);
 #endif
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
+#endif
+#ifdef MODC_CABLE_ROL
+static void DXL_CABLE_ROL_INIT(void);
+static void tickCableRolCompliance(uint32_t now);
 #endif
 /* USER CODE END PFP */
 
@@ -399,6 +416,11 @@ extern "C" int main(void)
     LOG_INFO("[main] Joint DXL ready\n");
 #endif
 
+#ifdef MODC_CABLE_ROL
+    DXL_CABLE_ROL_INIT();
+    LOG_INFO("[main] Cable roll DXL ready\n");
+#endif
+
     // 4. I2C bus scan — detect all devices
 #ifdef DEBUG
     i2cBusScan();
@@ -494,6 +516,11 @@ extern "C" int main(void)
         // Beak gripper state machine
         tickBeakStateMachine(now);
 #endif // MODC_ARM
+
+#ifdef MODC_CABLE_ROL
+        // Cable roll active compliance control
+        tickCableRolCompliance(now);
+#endif // MODC_CABLE_ROL
 
         /* USER CODE END WHILE */
 
@@ -1187,6 +1214,140 @@ static void DXL_JOINT_INIT(void)
 }
 #endif // MODC_JOINT
 
+#ifdef MODC_CABLE_ROL
+/**
+ * Initialise the cable roll Dynamixel motor on USART2.
+ * Uses Extended Position Control (mode 4) for smooth multi-turn positioning.
+ */
+static void DXL_CABLE_ROL_INIT(void)
+{
+    cableRolMotor.setTorqueEnable(false);
+    HAL_Delay(10U);
+
+    cableRolMotor.setStatusReturnLevel(2U);
+    HAL_Delay(10U);
+
+    // Use Current-based Position Control (mode 5) for compliant behavior
+    // The motor holds position but can be back-driven when external force exceeds current limit
+    cableRolMotor.setOperatingMode(5U);
+    HAL_Delay(10U);
+
+    // Set profile limits for smooth motion
+    cableRolMotor.setProfileVelocity(CABLE_ROL_PROFILE_VELOCITY);
+    cableRolMotor.setProfileAcceleration(CABLE_ROL_PROFILE_ACCELERATION);
+    HAL_Delay(10U);
+
+    // Read current position as home reference (do NOT move to any position)
+    int32_t curPos = 0;
+    bool ok = cableRolMotor.getPresentPosition(curPos) == 0;
+
+    if (!ok)
+    {
+        LOG_WARN("[CABLE_ROL_INIT] Position read failed — torque not enabled\n");
+        return;
+    }
+
+    // Home = current position on startup (cable stays where it is)
+    cableRolPos0 = curPos;
+    cableRolPos = curPos;
+    cableRolOldPos = curPos;
+
+    // Set goal to current position (no movement) and enable torque
+    cableRolMotor.setGoalPositionEpcm(curPos);
+    HAL_Delay(10U);
+    cableRolMotor.setTorqueEnable(true);
+
+    cableRolActive = true;
+    cableRolCtrlMs = HAL_GetTick();
+
+    // Set initial current limit — this controls how hard the motor holds position
+    // Lower = softer, easier to back-drive. Higher = stiffer, holds position better.
+    cableRolMotor.setGoalCurrent(CABLE_ROL_HOLD_CURRENT);
+
+    LOG_INFO("[CABLE_ROL_INIT] Cable roll DXL initialised (home=current=%d, NOT moving)\n", curPos);
+}
+
+/**
+ * Active compliance control for cable roll.
+ *
+ * Reads the present load (tension) from the Dynamixel and adjusts the goal
+ * position to maintain target tension. If tension is too high (cable pulled),
+ * the motor releases more cable. If tension is too low (cable slack), the
+ * motor retracts the cable.
+ *
+ * This is a P-controller on load error that adjusts position, similar to the
+ * beak gripper control but adapted for continuous cable management.
+ *
+ * @param now HAL_GetTick() snapshot from the current loop iteration.
+ */
+static void tickCableRolCompliance(uint32_t now)
+{
+    if (!cableRolActive || !cableRolCompliance) return;
+
+    if ((now - cableRolCtrlMs) < CABLE_ROL_CTRL_MS) return;
+    cableRolCtrlMs = now;
+
+    // Read present current (tension proxy) and actual position
+    int16_t presentCurrent = 0;
+    cableRolMotor.getPresentCurrent(presentCurrent);
+    int16_t absCurrent = (int16_t)abs(presentCurrent);
+
+    int32_t actualPos = 0;
+    cableRolMotor.getPresentPosition(actualPos);
+
+    // Position deviation: how far the motor has been pushed from its goal
+    // posDev > 0: motor was pushed in retract direction (cable pulled tighter)
+    // posDev < 0: motor was pushed in release direction (cable went slack)
+    int32_t posDev = actualPos - cableRolPos;
+
+    // Strategy: the goal should "follow" the actual position when an external
+    // force is applied. This is what makes the motor feel compliant.
+    //
+    // If you pull the cable, actualPos increases → we move goal to follow → motor releases
+    // If cable goes slack, actualPos decreases → we move goal to follow → motor retracts
+    //
+    // The current feedback adds a bias: if current is below target, retract more;
+    // if current is above target, release more.
+
+    // Position following (primary): makes the motor comply with external forces
+    // KP_POS determines how quickly the goal follows the actual position
+    int32_t posAdjustment = (int32_t)(CABLE_ROL_KP_POS * (float)posDev);
+
+    // Current bias (secondary): maintain target tension
+    int16_t currentError = cableRolTargetCurrent - absCurrent;
+    int32_t currentAdjustment = (int32_t)(CABLE_ROL_KP * (float)currentError);
+
+    // Combined: position following is primary, current bias is secondary
+    int32_t adjustment = posAdjustment + currentAdjustment;
+
+    // Clamp adjustment per step for smooth motion
+    if (adjustment > CABLE_ROL_MAX_ADJUST) adjustment = CABLE_ROL_MAX_ADJUST;
+    if (adjustment < -CABLE_ROL_MAX_ADJUST) adjustment = -CABLE_ROL_MAX_ADJUST;
+
+    // Apply adjustment to goal position
+    int32_t newPos = cableRolPos + adjustment;
+
+    // Deadzone: only send if change is significant
+    if (abs(newPos - cableRolOldPos) > CABLE_ROL_DEADZONE)
+    {
+        cableRolPos = newPos;
+        cableRolMotor.setGoalPositionEpcm(cableRolPos);
+        cableRolOldPos = cableRolPos;
+        LOG_DEBUG("[CableRol] Compliance: cur=%d posDev=%d adj=%d pos=%d\n",
+                  absCurrent, posDev, adjustment, cableRolPos);
+    }
+
+    // Safety: check hardware error
+    uint8_t hwErr = 0U;
+    cableRolMotor.getHardwareErrorStatus(hwErr);
+    if (hwErr != 0U)
+    {
+        cableRolCompliance = false;
+        LOG_WARN("[CableRol] HW error 0x%02X -> compliance disabled\n", hwErr);
+    }
+}
+#endif // MODC_CABLE_ROL
+
 /**
  * Send telemetry CAN frames at DT_TEL cadence.
  */
@@ -1279,6 +1440,23 @@ static void sendFeedback(void)
     float joint_posf_2_rad = (float)(jointPosf2 - jointPos0Mot2) * DXL_TO_RAD;
     canW.sendMessage(JOINT_ROLL_2_FEEDBACK, &joint_posf_2_rad, 4U);
 #endif // MODC_JOINT
+
+#ifdef MODC_CABLE_ROL
+    // Cable roll feedback (position + load)
+    if (cableRolActive)
+    {
+        int32_t cableRolPosFb = 0;
+        cableRolMotor.getPresentPosition(cableRolPosFb);
+        float cableRolPosRad = (float)(cableRolPosFb - cableRolPos0) * DXL_TO_RAD;
+        canW.sendMessage(CABLE_ROL_FEEDBACK, &cableRolPosRad, 4U);
+
+        int16_t cableRolCurrent = 0;
+        cableRolMotor.getPresentCurrent(cableRolCurrent);
+        canW.sendMessage(CABLE_ROL_LOAD_FEEDBACK, &cableRolCurrent, 2U);
+
+        LOG_DEBUG("[CableRol] Pos: %.2f rad (%d DXL) Cur: %d\n", cableRolPosRad, cableRolPosFb, cableRolCurrent);
+    }
+#endif // MODC_CABLE_ROL
 
     // Battery voltage — all modules, low frequency (0.2 Hz)
     {
@@ -1419,6 +1597,56 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
         }
 #endif // MODC_ARM
 
+#ifdef MODC_CABLE_ROL
+        case SET_HOME:
+        {
+            // For cable roll: set current position as home (cable shortest = 0 rad)
+            // msgData[0]: 0 = session only, 1 = persist to Flash
+            int32_t curPos = 0;
+            cableRolMotor.getPresentPosition(curPos);
+            cableRolPos0 = curPos;
+
+            // Reset setpoint to home (0 rad from home)
+            cableRolPos = curPos;
+            cableRolOldPos = curPos;
+            cableRolMotor.setGoalPositionEpcm(curPos);
+
+            if (msgData[0] == 1U)
+            {
+                // Save cable roll home to Flash (reuse same Flash page, different offset)
+                HAL_FLASH_Unlock();
+                FLASH_EraseInitTypeDef eraseInit;
+                eraseInit.TypeErase = FLASH_TYPEERASE_PAGES;
+                eraseInit.Banks = HOME_FLASH_BANK;
+                eraseInit.Page = HOME_FLASH_PAGE_NUM;
+                eraseInit.NbPages = 1U;
+                uint32_t pageError = 0U;
+                if (HAL_FLASHEx_Erase(&eraseInit, &pageError) != HAL_OK)
+                {
+                    HAL_FLASH_Lock();
+                    LOG_WARN("[Flash] Cable roll home erase failed\n");
+                }
+                else
+                {
+                    uint64_t dword = static_cast<uint64_t>(static_cast<uint32_t>(curPos)) |
+                                    (static_cast<uint64_t>(HOME_FLASH_MAGIC) << 32U);
+                    if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                                          HOME_FLASH_PAGE_ADDR + 32U, dword) == HAL_OK)
+                    {
+                        LOG_INFO("[Flash] Cable roll home saved: %d\n", curPos);
+                    }
+                    else
+                    {
+                        LOG_WARN("[Flash] Cable roll home write failed\n");
+                    }
+                }
+                HAL_FLASH_Lock();
+            }
+            LOG_INFO("[CAN] SET_HOME: cable roll home set to %d (session=%u)\n", curPos, msgData[0]);
+            break;
+        }
+#endif // MODC_CABLE_ROL
+
 #ifdef MODC_JOINT // Inter-module joint — MODC_JOINT modules only
         case JOINT_PITCH_1A1B_SETPOINT:
         {
@@ -1444,6 +1672,50 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             break;
         }
 #endif // MODC_JOINT
+
+#ifdef MODC_CABLE_ROL // Cable roll — MOD3 only
+        case CABLE_ROL_SETPOINT:
+        {
+            float positionRad;
+            memcpy(&positionRad, msgData, 4);
+            int32_t goalPos = cableRolPos0 + (int32_t)(positionRad * CABLE_ROL_RAD_TO_DXL);
+
+            // Deadzone: ignore small changes
+            if (abs(goalPos - cableRolOldPos) > CABLE_ROL_DEADZONE)
+            {
+                cableRolPos = goalPos;
+                cableRolMotor.setGoalPositionEpcm(cableRolPos);
+                cableRolOldPos = cableRolPos;
+                LOG_DEBUG("[CAN] CABLE_ROL_SETPOINT: %.2f rad (%d DXL)\n", positionRad, cableRolPos);
+            }
+            // Position command disables compliance (user takes manual control)
+            cableRolCompliance = false;
+            break;
+        }
+
+        case CABLE_ROL_COMPLIANCE_CTRL:
+        {
+            // msgData[0]: 0 = disable, 1 = enable
+            // msgData[1:2]: target current (int16, little-endian) — proxy for desired tension
+            uint8_t enable = msgData[0];
+            int16_t targetCurrent = (int16_t)((uint16_t)msgData[1] | ((uint16_t)msgData[2] << 8U));
+
+            if (enable && targetCurrent > 0)
+            {
+                cableRolCompliance = true;
+                cableRolTargetCurrent = targetCurrent;
+                cableRolCtrlMs = HAL_GetTick();
+                LOG_INFO("[CableRol] Compliance ON, target current = %d (~%.0f mA)\n",
+                         targetCurrent, (float)targetCurrent * 2.69f);
+            }
+            else
+            {
+                cableRolCompliance = false;
+                LOG_INFO("[CableRol] Compliance OFF\n");
+            }
+            break;
+        }
+#endif // MODC_CABLE_ROL
 
         // Traction reboot — all modules
         case MOTOR_TRACTION_REBOOT:
@@ -1477,6 +1749,10 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             jointMot1L.setTorqueEnable((torqueBits & 0x0004U) != 0U);
             jointMot1R.setTorqueEnable((torqueBits & 0x0008U) != 0U);
             jointMot2.setTorqueEnable((torqueBits & 0x0010U) != 0U);
+#endif
+#ifdef MODC_CABLE_ROL
+            // Bit 5 = cable roll motor
+            cableRolMotor.setTorqueEnable((torqueBits & 0x0020U) != 0U);
 #endif
             LOG_INFO("[CAN] TORQUE_ENABLE_DISABLE: 0x%04X\n", torqueBits);
             break;

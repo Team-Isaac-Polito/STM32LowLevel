@@ -48,7 +48,7 @@
 #define MODC_JOINT                        ///< Module has inter-module joint
 #define MODC_IMU                          ///< Module has LSM6DSL IMU
 
-// MK2_MOD3 — TAIL: traction + inter-module joint + yaw encoder + IMU
+// MK2_MOD3 — TAIL: traction + inter-module joint + yaw encoder + IMU + cable roll
 #elif MODULE_DEFINE == MK2_MOD3
 
 #define CAN_ID MK2_MOD3
@@ -57,6 +57,8 @@
 #define MODC_YAW                         ///< Module has AS5048B yaw encoder
 #define MODC_JOINT                       ///< Module has inter-module joint
 #define MODC_IMU                         ///< Module has LSM6DSL IMU
+#define MODC_CABLE_ROL                   ///< Module has cable roll motor
+#define SERVO_CABLE_ROL_ID 10            ///< Cable roll XM540 servo ID
 
 #else
 #error "Unknown MODULE_DEFINE value. Valid values: MK2_MOD1 (0x21), MK2_MOD2 (0x22), MK2_MOD3 (0x23)"

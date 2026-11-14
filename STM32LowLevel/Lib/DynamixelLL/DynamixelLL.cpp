@@ -156,7 +156,7 @@ uint8_t DynamixelLL::factoryReset(uint8_t level)
 
 uint8_t DynamixelLL::setOperatingMode(uint8_t mode)
 {
-    if (!(mode == 1 || mode == 3 || mode == 4 || mode == 16))
+    if (!(mode == 1 || mode == 3 || mode == 4 || mode == 5 || mode == 16))
     {
         LOG_WARN("DXL: unsupported operating mode %u\n", mode);
         return 1u;
@@ -350,6 +350,11 @@ uint8_t DynamixelLL::getCurrentLoad(int16_t& currentLoad)
     return readRegister<int16_t>(126u, currentLoad, 2u);
 }
 
+uint8_t DynamixelLL::getPresentCurrent(int16_t& presentCurrent)
+{
+    return readRegister<int16_t>(128u, presentCurrent, 2u);
+}
+
 uint8_t DynamixelLL::getMovingStatus(DxlMovingStatus& status)
 {
     uint8_t err = readRegister<uint8_t>(123u, status.raw, 1u);
@@ -379,6 +384,15 @@ uint8_t DynamixelLL::setGoalPWM(int16_t goalPWM)
         goalPWM = -885;
     }
     return writeRegister(100u, (uint32_t)(uint16_t)goalPWM, 2u);
+}
+
+uint8_t DynamixelLL::setGoalCurrent(int16_t goalCurrent)
+{
+    if (goalCurrent > 2047)
+        goalCurrent = 2047;
+    if (goalCurrent < -2047)
+        goalCurrent = -2047;
+    return writeRegister(102u, (uint32_t)(uint16_t)goalCurrent, 2u);
 }
 
 uint8_t DynamixelLL::getPresentTemperature(uint8_t& temperature)
