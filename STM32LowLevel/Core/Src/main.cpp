@@ -187,6 +187,7 @@ static void dxlBusInit(USART_TypeDef* usart);
 static void dxlTractionInit(void);
 #ifdef DEBUG
 static void i2cBusScan(void);
+static void dxlIdScan(void);
 #endif
 #ifdef MODC_ARM
 static void dxlArmInit(void);
@@ -399,18 +400,19 @@ extern "C" int main(void)
     LOG_INFO("[main] Joint DXL ready\n");
 #endif
 
-    // 4. I2C bus scan — detect all devices
+    // Debug scans
 #ifdef DEBUG
     i2cBusScan();
+    dxlIdScan();
 #endif
 
-    // 4a. I2C — Yaw encoder (shares I2C1 with IMU)
+    // I2C — Yaw encoder (shares I2C1 with IMU)
 #ifdef MODC_YAW
     encoderYaw.setZero();
     LOG_INFO("[main] Yaw encoder ready\n");
 #endif
 
-    // 4b. I2C — IMU
+    // I2C — IMU
 #ifdef MODC_IMU
     imu.begin(IMU_ADDRESS);
     if (!imu.checkID())
@@ -427,7 +429,7 @@ extern "C" int main(void)
     }
 #endif
 
-    // 5. ADC — Battery (ADC1 LL)
+    // ADC — Battery (ADC1 LL)
     battery.begin();
     LOG_INFO("[main] Battery ready, %.2f V\n", battery.readVoltage());
 
@@ -1186,6 +1188,27 @@ static void DXL_JOINT_INIT(void)
     LOG_INFO("[JOINT_INIT] Joint DXL initialised\n");
 }
 #endif // MODC_JOINT
+
+/**
+ * Ping every valid Dynamixel ID and report responders to the debug console.
+ */
+static void dxlIdScan(void)
+{
+    uint8_t found = 0U;
+
+    LOG_INFO("[DXL_SCAN] Scanning IDs 0..252...\n");
+    for (uint16_t id = 0U; id <= 252U; ++id)
+    {
+        DynamixelLL motor(USART2, (uint8_t)id);
+        uint32_t modelNumber = 0U;
+        if (motor.ping(modelNumber) == 0U)
+        {
+            LOG_INFO("[DXL_SCAN] FOUND id=%u model=0x%08lX\n", id, (unsigned long)modelNumber);
+            found++;
+        }
+    }
+    LOG_INFO("[DXL_SCAN] Complete: %u motor(s) responded\n", found);
+}
 
 /**
  * Send telemetry CAN frames at DT_TEL cadence.
