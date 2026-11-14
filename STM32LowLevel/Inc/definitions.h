@@ -85,6 +85,24 @@
 #define ARM_HOME_NUM_MOTORS 7                                     ///< Number of arm motors (including beak/gripper)
 #define ARM_DEFAULT_HOME {1328, 641, 4101, 3072, 1757, 3612, 144} ///< Order: J1a, J1b, J2, J3, J4, J5, J6
 
+// Cable roll configuration (MOD3)
+#define CABLE_ROL_PROFILE_VELOCITY     10  ///< Profile velocity (DXL units)
+#define CABLE_ROL_PROFILE_ACCELERATION 5   ///< Profile acceleration (DXL units)
+#define CABLE_ROL_DEADZONE             5    ///< Deadzone for position commands (DXL units)
+#define CABLE_ROL_RAD_TO_DXL           (4096.0f / (2.0f * 3.14159265f))  ///< Radians to DXL position units
+#define CABLE_ROL_DEFAULT_HOME         0.0f   ///< Default home = fully wound (cable shortest, 0 rad)
+
+// Cable roll active compliance (tension control via present current feedback)
+// Uses Current-based Position Control mode (5) — motor holds position but
+// can be back-driven when external force exceeds current limit.
+// The compliance loop reads present current and adjusts goal position.
+#define CABLE_ROL_CTRL_MS              10    ///< Control loop interval (ms) — 100 Hz
+#define CABLE_ROL_KP                   0.5f  ///< P-gain on current error (DXL per mA-unit)
+#define CABLE_ROL_KP_POS               1.0f  ///< P-gain on position deviation (primary compliance). Higher = more responsive.
+#define CABLE_ROL_TARGET_CURRENT       50    ///< Default target current (~2.69 mA per unit) — proxy for desired tension
+#define CABLE_ROL_MAX_ADJUST           500   ///< Max position adjustment per control step (DXL units)
+#define CABLE_ROL_HOLD_CURRENT         100   ///< Current limit (mA) for mode 5. Lower = softer, easier to back-drive.
+
 // Flash storage for home positions (STM32G474, 512 KB Flash with dual bank)
 #define HOME_FLASH_PAGE_ADDR 0x0807F800UL ///< Start address of last Flash page (Bank 2, page 127)
 #define HOME_FLASH_PAGE_SIZE 2048U        ///< Page size (bytes) — 2 KB in dual-bank mode (DBANK=1)

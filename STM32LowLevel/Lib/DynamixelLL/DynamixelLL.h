@@ -283,6 +283,17 @@ class DynamixelLL
     uint8_t setGoalPWM(int16_t goalPWM);
 
     /**
+     * @brief Set goal current (Current-based Position Control, control table address 102).
+     *
+     * Each unit ≈ 2.69 mA.  Valid range: -2047 to +2047.
+     * Used for tension control in cable roll application.
+     *
+     * @param goalCurrent Current value (positive = CCW torque, negative = CW torque).
+     * @return Error byte from status packet (0 = success).
+     */
+    uint8_t setGoalCurrent(int16_t goalCurrent);
+
+    /**
      * @brief Read present velocity in RPM (control table address 128).
      *
      * @param[out] rpm Present velocity in revolutions per minute.
@@ -308,6 +319,18 @@ class DynamixelLL
      * @return Error byte from status packet (0 = success).
      */
     uint8_t getCurrentLoad(int16_t& currentLoad);
+
+    /**
+     * @brief Read present current (control table address 128).
+     *
+     * Range: -2047 to +2047, where each unit ≈ 2.69 mA.
+     * Positive = CCW direction, negative = CW direction.
+     * This is the actual current the motor is drawing — directly reflects torque.
+     *
+     * @param[out] presentCurrent Present current value.
+     * @return Error byte from status packet (0 = success).
+     */
+    uint8_t getPresentCurrent(int16_t& presentCurrent);
 
     /**
      * @brief Read the Moving Status register (control table address 123).
