@@ -16,6 +16,10 @@ if "%~1"=="" (
 set BIN_FILE=%~1
 set DFU_VID_PID=0483:df11
 set DFU_ADDR=0x08000000
+set PYTHON_SCRIPT_PATH=%~dp0
+:: Gets the path for the bin file (e.s.: C:\STM32LowLevel\STM32LowLevel\build\debug\MK2_MOD1\STM32LowLevel.bin
+:: gives C:\STM32LowLevel\STM32LowLevel\build\debug\MK2_MOD1\)
+for %%i in ("%BIN_FILE%") do set "%BUILD_PATH%=%%~dpi"
 
 :: ── Internal re-launch path: interactive WSL Y/N prompt ──────────────────────
 if "%~2"=="--wsl-fallback" goto :wsl_interactive
@@ -28,10 +32,23 @@ echo.
 echo [flash] Looking for native dfu-util...
 where dfu-util >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    echo [flash] Found dfu-util. Flashing...
+    echo [flash] Found dfu-util. Dumping firmware...
     echo.
-    dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR% -D "%BIN_FILE%"
-    exit /b %ERRORLEVEL%
+    :: Dumps to 128KB
+    dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR%:131072 -U "%BUILD_PATH%\dump.bin" >nul 2>&1
+    if exist "%BUILD_PATH%\dump.bin" (
+        echo [flash] Obtained last pushed firmware, diffing and flashing...
+        echo.
+        python "%PYTHON_SCRIPT_PATH%\diff.py" "%BUILD_PATH%\dump.bin" "%BIN_FILE%"
+        dfu-util -d %DFU_VID_PID% -a 0 -D "%BUILD_PATH%\output.dfu"
+    ) else (
+        echo [flash] Unable to obtain the dumped firmware, attempting to send full binary...
+        echo.
+        dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR% -D "%BIN_FILE%"
+    )
+    :: %ERRORLEVEL% doesn't get evaluated again inside an if() statement, !<variable>! gets always evaluated at runtime.
+    :: For example: dfu-util doesn't flash successfully -> %ERRORLEVEL% EQU 0, whereas !ERRORLEVEL! EQU 1 !!!! 
+    exit /b !ERRORLEVEL!
 )
 
 :: dfu-util not found — print install instructions
