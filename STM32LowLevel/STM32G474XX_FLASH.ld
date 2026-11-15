@@ -1,10 +1,9 @@
 /*
 ******************************************************************************
 **
-
 **  File        : LinkerScript.ld
 **
-**  Author		: STM32CubeMX
+**  Author		  : STM32CubeMX
 **
 **  Abstract    : Linker script for STM32G474RETx series
 **                512Kbytes FLASH and 128Kbytes RAM
@@ -56,20 +55,21 @@ ENTRY(Reset_Handler)
 MEMORY
 {
 RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 512K
+FLASH (rx)     : ORIGIN = 0x08000000, LENGTH = 512K
 }
 
 /* Highest address of the user mode stack */
 _estack = ORIGIN(RAM) + LENGTH(RAM);    /* end of RAM */
 _sstack = _estack - _Min_Stack_Size;
+
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x400;      /* required amount of heap  */
-_Min_Stack_Size = 0x800; /* required amount of stack */
+_Min_Stack_Size = 0x800;     /* required amount of stack */
 
 /* Define output sections */
 SECTIONS
 {
-  /* The startup code goes first into FLASH */
+  /* 1. The startup vector table goes first into FLASH */
   .isr_vector :
   {
     . = ALIGN(4);
@@ -77,40 +77,50 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  /* The program code and other data goes into FLASH */
+  /* 2. Program code goes into FLASH (Sorted & Page-Padded) */
   .text :
   {
     . = ALIGN(4);
-    *(.text)           /* .text sections (code) */
-    *(.text*)          /* .text* sections (code) */
-    *(.glue_7)         /* glue arm to thumb code */
-    *(.glue_7t)        /* glue thumb to arm code */
+    *(.text.startup.*)         /* Keep startup routines fixed at the top */
+    *(SORT_BY_NAME(.text.*))   /* Deterministic alphabetical function sorting */
+    *(.text)                   /* .text sections (code) */
+    *(.text*)                  /* remaining .text* sections */
+    *(.glue_7)                 /* glue arm to thumb code */
+    *(.glue_7t)                /* glue thumb to arm code */
     *(.eh_frame)
 
     KEEP (*(.init))
     KEEP (*(.fini))
 
     . = ALIGN(4);
-    _etext = .;        /* define a global symbols at end of code */
+    _etext = .;                /* define global symbol at end of code */
+
+    /* 
+     * DELTA OPTIMIZATION: Pad .text to a 2 KB (2048-byte) STM32G4 page boundary.
+     * Minor code edits will absorb into this page's slack space without 
+     * shifting .rodata or .data load addresses in subsequent pages.
+     */
+    . = ALIGN(2048);
   } >FLASH
 
-  /* Constant data goes into FLASH */
+  /* 3. Constant data goes into FLASH (Sorted) */
   .rodata :
   {
     . = ALIGN(4);
-    *(.rodata)         /* .rodata sections (constants, strings, etc.) */
-    *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
+    *(SORT_BY_NAME(.rodata.*)) /* Deterministic sorting for constants/strings */
+    *(.rodata)                 /* .rodata sections (constants, strings, etc.) */
+    *(.rodata*)                /* remaining .rodata* sections */
     . = ALIGN(4);
   } >FLASH
 
-  .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .ARM.extab (READONLY) : /* Remove (READONLY) if using GCC10 or earlier */
   {
     . = ALIGN(4);
     *(.ARM.extab* .gnu.linkonce.armextab.*)
     . = ALIGN(4);
   } >FLASH
 
-  .ARM (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .ARM (READONLY) : /* Remove (READONLY) if using GCC10 or earlier */
   {
     . = ALIGN(4);
     __exidx_start = .;
@@ -119,7 +129,7 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  .preinit_array (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .preinit_array (READONLY) :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN (__preinit_array_start = .);
@@ -128,7 +138,7 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  .init_array (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .init_array (READONLY) :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN (__init_array_start = .);
@@ -138,7 +148,7 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  .fini_array (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
+  .fini_array (READONLY) :
   {
     . = ALIGN(4);
     PROVIDE_HIDDEN (__fini_array_start = .);
@@ -148,31 +158,43 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  /* used by the startup to initialize data */
+  /* Used by startup to initialize data */
   _sidata = LOADADDR(.data);
 
-  /* Initialized data sections goes into RAM, load LMA copy after code */
+  /* 4. Initialized data sections go into RAM, load LMA copy after code */
   .data :
   {
     . = ALIGN(4);
-    _sdata = .;        /* create a global symbol at data start */
-    *(.data)           /* .data sections */
-    *(.data*)          /* .data* sections */
-    *(.RamFunc)        /* .RamFunc sections */
-    *(.RamFunc*)       /* .RamFunc* sections */
+    _sdata = .;                /* create a global symbol at data start */
+    *(SORT_BY_NAME(.data.*))   /* Deterministic sorting for initialized globals */
+    *(.data)                   /* .data sections */
+    *(.data*)                  /* remaining .data* sections */
+    *(SORT_BY_NAME(.RamFunc.*))
+    *(.RamFunc)                /* .RamFunc sections */
+    *(.RamFunc*)               /* .RamFunc* sections */
 
     . = ALIGN(4);
   } >RAM AT> FLASH
 
- /* Initialized TLS data section */
+  /* 5. Initialized TLS data section */
   .tdata : ALIGN(4)
   {
     *(.tdata .tdata.* .gnu.linkonce.td.*)
     . = ALIGN(4);
-    _edata = .;        /* define a global symbol at data end */
+    _edata = .;                /* define a global symbol at data end */
     PROVIDE(__data_end = .);
     PROVIDE(__tdata_end = .);
   } >RAM AT> FLASH
+
+  /*
+   * DELTA OPTIMIZATION: Pad the final Flash LMA to a 2 KB page boundary.
+   * Ensures the resulting .bin file size is always an exact multiple of 
+   * 2048 bytes for safe DFU page-aligned chunking.
+   */
+  .flash_end_align :
+  {
+    . = ALIGN(2048);
+  } >FLASH
 
   PROVIDE( __tdata_start = ADDR(.tdata) );
   PROVIDE( __tdata_size = __tdata_end - __tdata_start );
@@ -187,11 +209,11 @@ SECTIONS
   PROVIDE( __data_source = LOADADDR(.data) );
   PROVIDE( __data_source_end = __tdata_source_end );
   PROVIDE( __data_source_size = __data_source_end - __data_source );
-  /* Uninitialized data section */
+
+  /* 6. Uninitialized data section */
   .tbss (NOLOAD) : ALIGN(4)
   {
-     /* This is used by the startup in order to initialize the .bss secion */
-    _sbss = .;         /* define a global symbol at bss start */
+    _sbss = .;                 /* define a global symbol at bss start */
     __bss_start__ = _sbss;
     *(.tbss .tbss.*)
     . = ALIGN(4);
@@ -212,14 +234,15 @@ SECTIONS
 
   .bss (NOLOAD) : ALIGN(4)
   {
+    *(SORT_BY_NAME(.bss.*))    /* Deterministic sorting for zero-init globals */
     *(.bss)
     *(.bss*)
     *(COMMON)
 
-      . = ALIGN(4);
-    _ebss = .;         /* define a global symbol at bss end */
+    . = ALIGN(4);
+    _ebss = .;                 /* define a global symbol at bss end */
     __bss_end__ = _ebss;
-      PROVIDE( __bss_end = .);
+    PROVIDE( __bss_end = .);
   } >RAM
   PROVIDE( __non_tls_bss_start = ADDR(.bss) );
 
@@ -237,8 +260,6 @@ SECTIONS
     . = ALIGN(8);
   } >RAM
 
-
-
   /* Remove information from the standard libraries */
   /DISCARD/ :
   {
@@ -246,5 +267,4 @@ SECTIONS
     libm.a:* ( * )
     libgcc.a:* ( * )
   }
-
 }
