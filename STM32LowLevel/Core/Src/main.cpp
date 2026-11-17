@@ -76,7 +76,11 @@ enum class Led : uint8_t
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#ifdef MODC_EFUSE
+constexpr float EFUSE_VREF = 3.3f;
+constexpr float EFUSE_ADC_MAX = 4095.0f;
+constexpr float EFUSE_IMON_GAIN = 511.0f * 246e-6f; // TPS25982 (SLVSGT5)
+#endif
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -87,6 +91,11 @@ enum class Led : uint8_t
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+#ifdef MODC_EFUSE
+static float efuse1Current = 0.0f;
+static float efuse2Current = 0.0f;
+static uint8_t efuseFaultMask = 0U; // Bit 0 = EFUSE1 fault, Bit 1 = EFUSE2 fault
+#endif
 
 // CAN
 static CanWrapper canW;
@@ -202,6 +211,13 @@ static void ledHpSetBrightness(uint8_t brightness);
 #ifdef MODC_JOINT
 static void DXL_JOINT_INIT(void);
 #endif
+#ifdef MODC_EFUSE
+static void efuseInit(void);
+static uint16_t readAdcLl(ADC_TypeDef* adc, uint32_t channel);
+static float calculateEfuseCurrent(uint16_t adcRaw);
+static void updateEfuseMonitoring(void);
+#endif
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -269,6 +285,67 @@ static inline void ledToggle(Led led)
     }
     LL_GPIO_TogglePin(port, pin);
 }
+
+#ifdef MODC_EFUSE
+static void efuseInit(void)
+{
+    // Configure ADC1 CH15 (PB0 = EFUSE2_IMON) while ADC1 is still disabled
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_15, LL_ADC_SAMPLINGTIME_24CYCLES_5);
+    LL_ADC_SetChannelSingleDiff(ADC1, LL_ADC_CHANNEL_15, LL_ADC_SINGLE_ENDED);
+
+    // Increase ADC2 CH5 (PC4 = EFUSE1_IMON) sampling time for accurate IMON reading
+    LL_ADC_SetChannelSamplingTime(ADC2, LL_ADC_CHANNEL_5, LL_ADC_SAMPLINGTIME_24CYCLES_5);
+
+    // Calibrate and enable ADC2 (ADC1 is calibrated and enabled by battery.begin())
+    LL_ADC_StartCalibration(ADC2, LL_ADC_SINGLE_ENDED);
+    while (LL_ADC_IsCalibrationOnGoing(ADC2) != 0U)
+    {}
+    HAL_Delay(1U);
+
+    LL_ADC_ClearFlag_ADRDY(ADC2);
+    LL_ADC_Enable(ADC2);
+    while (LL_ADC_IsActiveFlag_ADRDY(ADC2) == 0U)
+    {}
+}
+
+static uint16_t readAdcLl(ADC_TypeDef* adc, uint32_t channel)
+{
+    LL_ADC_REG_SetSequencerRanks(adc, LL_ADC_REG_RANK_1, channel);
+    LL_ADC_ClearFlag_EOC(adc);
+    LL_ADC_REG_StartConversion(adc);
+    while (LL_ADC_IsActiveFlag_EOC(adc) == 0U)
+    {}
+    return LL_ADC_REG_ReadConversionData12(adc);
+}
+
+static float calculateEfuseCurrent(uint16_t adcRaw)
+{
+    float vImon = (static_cast<float>(adcRaw) / EFUSE_ADC_MAX) * EFUSE_VREF;
+    return vImon / EFUSE_IMON_GAIN;
+}
+
+static void updateEfuseMonitoring(void)
+{
+    // 1. Read Power-Good pins every main loop cycle (active-low: 0 = fault, 1 = OK)
+    if (LL_GPIO_IsInputPinSet(EFUSE1_PG_GPIO_Port, EFUSE1_PG_Pin) == 0U)
+    {
+        efuseFaultMask |= (1U << 0);
+    }
+    if (LL_GPIO_IsInputPinSet(EFUSE2_PG_GPIO_Port, EFUSE2_PG_Pin) == 0U)
+    {
+        efuseFaultMask |= (1U << 1);
+    }
+
+    // 2. Sample EFUSE1_IMON on ADC2 IN5 (PC4)
+    uint16_t adc2Raw = readAdcLl(ADC2, LL_ADC_CHANNEL_5);
+    efuse1Current = calculateEfuseCurrent(adc2Raw);
+
+    // 3. Sample EFUSE2_IMON on ADC1 IN15 (PB0), then restore CH1 for Battery
+    uint16_t adc1Raw = readAdcLl(ADC1, LL_ADC_CHANNEL_15);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_1);
+    efuse2Current = calculateEfuseCurrent(adc1Raw);
+}
+#endif
 
 /* USER CODE END 0 */
 
@@ -427,6 +504,11 @@ extern "C" int main(void)
     }
 #endif
 
+#ifdef MODC_EFUSE
+    efuseInit();
+    LOG_INFO("[main] eFuse ADC2/ADC1 monitor ready\n");
+#endif
+
     // 5. ADC — Battery (ADC1 LL)
     battery.begin();
     LOG_INFO("[main] Battery ready, %.2f V\n", battery.readVoltage());
@@ -494,6 +576,10 @@ extern "C" int main(void)
         // Beak gripper state machine
         tickBeakStateMachine(now);
 #endif // MODC_ARM
+
+#ifdef MODC_EFUSE
+        updateEfuseMonitoring();
+#endif
 
         /* USER CODE END WHILE */
 
@@ -1291,6 +1377,21 @@ static void sendFeedback(void)
             canW.sendMessage(BATTERY_VOLTAGE, &vbat, 4U);
         }
     }
+
+#ifdef MODC_EFUSE
+    {
+        uint8_t efuseFrame[8] = {0U};
+        uint16_t curr1Scaled = static_cast<uint16_t>(efuse1Current * 100.0f); // 10 mA resolution
+        uint16_t curr2Scaled = static_cast<uint16_t>(efuse2Current * 100.0f);
+
+        memcpy(&efuseFrame[0], &curr1Scaled, 2U);
+        memcpy(&efuseFrame[2], &curr2Scaled, 2U);
+        efuseFrame[4] = efuseFaultMask;
+
+        canW.sendMessage(EFUSE_STATUS, efuseFrame, 8U);
+        efuseFaultMask = 0U;
+    }
+#endif
 }
 
 /**

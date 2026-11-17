@@ -28,6 +28,7 @@
 #define TRACTION_VELOCITY_COEFF_REV 0.9f ///< Reverse velocity scaling (head becomes tail)
 #define MODC_ARM                         ///< Module has 6-DOF robotic arm + beak gripper
 #define MODC_IMU                         ///< Module has LSM6DSL IMU
+#define MODC_EFUSE                       ///< Module has dual TPS25982 eFuse current/PG monitors
 
 // Arm Dynamixel motor IDs (DXL Bus 1 — USART2)
 #define SERVO_ARM_1A_PITCH_ID 210
@@ -47,6 +48,7 @@
 #define MODC_YAW                          ///< Module has AS5048B yaw encoder
 #define MODC_JOINT                        ///< Module has inter-module joint
 #define MODC_IMU                          ///< Module has LSM6DSL IMU
+#define MODC_EFUSE                        ///< Module has dual TPS25982 eFuse current/PG monitors
 
 // MK2_MOD3 — TAIL: traction + inter-module joint + yaw encoder + IMU
 #elif MODULE_DEFINE == MK2_MOD3
@@ -57,6 +59,7 @@
 #define MODC_YAW                         ///< Module has AS5048B yaw encoder
 #define MODC_JOINT                       ///< Module has inter-module joint
 #define MODC_IMU                         ///< Module has LSM6DSL IMU
+#define MODC_EFUSE                       ///< Module has dual TPS25982 eFuse current/PG monitors
 
 #else
 #error "Unknown MODULE_DEFINE value. Valid values: MK2_MOD1 (0x21), MK2_MOD2 (0x22), MK2_MOD3 (0x23)"

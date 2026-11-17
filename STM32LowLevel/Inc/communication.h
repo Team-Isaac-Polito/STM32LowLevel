@@ -11,7 +11,7 @@
 
 #ifndef COMMUNICATION_H
 #define COMMUNICATION_H
-
+// add can frame just forr efuse
 // Battery (0x1X)
 #define BATTERY_VOLTAGE 0x11     ///< Battery voltage    — Float, Volts
 #define BATTERY_PERCENT 0x12     ///< Battery SoC        — Float, Percent
@@ -54,10 +54,11 @@
 #define MOTOR_ARM_ERROR_STATUS 0x73      ///< Arm HW error bytes     — uint8[7]: J1a…J6
 #define TORQUE_ENABLE_DISABLE 0x74       ///< Per-motor torque enable/disable  — uint16 bitfield
 #define LED_HP_BRIGHTNESS 0x75           ///< LED HP board brightness  — uint8 (0=off, 255=max)
+#define EFUSE_STATUS 0x76 ///< eFuse currents and PG states — uint16: efuse1_mA, uint16: efuse2_mA, uint8: fault_mask
 
 // Arm velocity feedback — MK2 MOD1 only (0x8X)
-#define ARM_VELOCITY_SETPOINT 0x86   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity setpoint — Float×6, rad/s
-#define ARM_VELOCITY_FEEDBACK 0x88   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity feedback — Float×6, rad/s
+#define ARM_VELOCITY_SETPOINT 0x86 ///< Arm J1a/J1b/J2/J3/J4/J5 velocity setpoint — Float×6, rad/s
+#define ARM_VELOCITY_FEEDBACK 0x88 ///< Arm J1a/J1b/J2/J3/J4/J5 velocity feedback — Float×6, rad/s
 
 // IMU raw data (0x9X) — optional, debug only
 #define IMU_RAW_ACCEL 0x92 ///< Raw accelerometer data (debug)
