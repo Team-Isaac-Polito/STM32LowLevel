@@ -97,7 +97,6 @@ static float efuse2Current = 0.0f;
 static uint8_t efuseFaultMask = 0U; // Bit 0 = EFUSE1 fault, Bit 1 = EFUSE2 fault
 #endif
 
-
 // CAN
 static CanWrapper canW;
 
@@ -347,9 +346,6 @@ static void updateEfuseMonitoring(void)
     efuse2Current = calculateEfuseCurrent(adc1Raw);
 }
 #endif
-
-
-
 
 /* USER CODE END 0 */
 
@@ -1396,7 +1392,6 @@ static void sendFeedback(void)
         efuseFaultMask = 0U;
     }
 #endif
-
 }
 
 /**

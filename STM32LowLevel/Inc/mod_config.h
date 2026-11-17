@@ -48,7 +48,7 @@
 #define MODC_YAW                          ///< Module has AS5048B yaw encoder
 #define MODC_JOINT                        ///< Module has inter-module joint
 #define MODC_IMU                          ///< Module has LSM6DSL IMU
-#define MODC_EFUSE                       ///< Module has dual TPS25982 eFuse current/PG monitors
+#define MODC_EFUSE                        ///< Module has dual TPS25982 eFuse current/PG monitors
 
 // MK2_MOD3 — TAIL: traction + inter-module joint + yaw encoder + IMU
 #elif MODULE_DEFINE == MK2_MOD3

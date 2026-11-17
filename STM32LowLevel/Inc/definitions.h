@@ -34,9 +34,8 @@
 #define EFUSE_R_IMON 511U    ///< RIMON resistor (Ω)
 #define EFUSE_K_IMON 246e-6f ///< Current mirror ratio, per TPS25982 datasheet (A/A)
 #define V_REF 3.3f
-#define ADC_MAX 4095.0f //12 bit resolution
+#define ADC_MAX 4095.0f                //12 bit resolution
 #define IMON_GAIN (511.0f * 0.000246f) // 0.125706 V/A
-
 
 // Dynamixel position/velocity unit conversions
 #define DXL_TO_RAD 0.00153398f ///< DXL position units → radians  (2π / 4096)
