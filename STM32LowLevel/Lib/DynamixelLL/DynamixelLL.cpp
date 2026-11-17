@@ -389,9 +389,13 @@ uint8_t DynamixelLL::setGoalPWM(int16_t goalPWM)
 uint8_t DynamixelLL::setGoalCurrent(int16_t goalCurrent)
 {
     if (goalCurrent > 2047)
+    {
         goalCurrent = 2047;
+    }
     if (goalCurrent < -2047)
+    {
         goalCurrent = -2047;
+    }
     return writeRegister(102u, (uint32_t)(uint16_t)goalCurrent, 2u);
 }
 

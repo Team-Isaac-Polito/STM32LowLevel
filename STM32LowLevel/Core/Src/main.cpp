@@ -1295,7 +1295,7 @@ static void tickCableRolCompliance(uint32_t now)
 
     // Read present current (tension proxy) and actual position
     int16_t presentCurrent = 0;
-    cableRolMotor.getPresentCurrent(presentCurrent);
+    cableRolMotor.getCurrentLoad(presentCurrent);
     int16_t absCurrent = (int16_t)abs(presentCurrent);
 
     int32_t actualPos = 0;
@@ -1339,15 +1339,10 @@ static void tickCableRolCompliance(uint32_t now)
     // Apply adjustment to goal position
     int32_t newPos = cableRolPos + adjustment;
 
-    // Deadzone: only send if change is significant
-    if (abs(newPos - cableRolOldPos) > CABLE_ROL_DEADZONE)
-    {
-        cableRolPos = newPos;
-        cableRolMotor.setGoalPositionEpcm(cableRolPos);
-        cableRolOldPos = cableRolPos;
-        LOG_DEBUG(
-            "[CableRol] Compliance: cur=%d posDev=%d adj=%d pos=%d\n", absCurrent, posDev, adjustment, cableRolPos);
-    }
+    cableRolPos = newPos;
+    cableRolMotor.setGoalPositionEpcm(cableRolPos);
+    cableRolOldPos = cableRolPos;
+    LOG_DEBUG("[CableRol] Compliance: cur=%d posDev=%d adj=%d pos=%d\n", absCurrent, posDev, adjustment, cableRolPos);
 
     // Safety: check hardware error
     uint8_t hwErr = 0U;
@@ -1463,7 +1458,7 @@ static void sendFeedback(void)
         canW.sendMessage(CABLE_ROL_FEEDBACK, &cableRolPosRad, 4U);
 
         int16_t cableRolCurrent = 0;
-        cableRolMotor.getPresentCurrent(cableRolCurrent);
+        cableRolMotor.getCurrentLoad(cableRolCurrent);
         canW.sendMessage(CABLE_ROL_LOAD_FEEDBACK, &cableRolCurrent, 2U);
 
         LOG_DEBUG("[CableRol] Pos: %.2f rad (%d DXL) Cur: %d\n", cableRolPosRad, cableRolPosFb, cableRolCurrent);
@@ -1691,14 +1686,10 @@ static void handleSetpoint(uint8_t msgId, const uint8_t* msgData)
             memcpy(&positionRad, msgData, 4);
             int32_t goalPos = cableRolPos0 + (int32_t)(positionRad * CABLE_ROL_RAD_TO_DXL);
 
-            // Deadzone: ignore small changes
-            if (abs(goalPos - cableRolOldPos) > CABLE_ROL_DEADZONE)
-            {
-                cableRolPos = goalPos;
-                cableRolMotor.setGoalPositionEpcm(cableRolPos);
-                cableRolOldPos = cableRolPos;
-                LOG_DEBUG("[CAN] CABLE_ROL_SETPOINT: %.2f rad (%d DXL)\n", positionRad, cableRolPos);
-            }
+            cableRolPos = goalPos;
+            cableRolMotor.setGoalPositionEpcm(cableRolPos);
+            cableRolOldPos = cableRolPos;
+            LOG_DEBUG("[CAN] CABLE_ROL_SETPOINT: %.2f rad (%d DXL)\n", positionRad, cableRolPos);
             // Position command disables compliance (user takes manual control)
             cableRolCompliance = false;
             break;

@@ -49,10 +49,16 @@
 #define JOINT_ROLL_2_FEEDBACK 0x64     ///< Joint roll feedback — Float, rad
 
 // Cable roll — MK2 MOD3 only (0xAX)
-#define CABLE_ROL_SETPOINT          0xA0  ///< Cable roll position setpoint — Float, rad
-#define CABLE_ROL_FEEDBACK          0xA1  ///< Cable roll position feedback — Float, rad
-#define CABLE_ROL_COMPLIANCE_CTRL   0xA2  ///< Compliance enable/disable + target load — uint8 enable, int16 target_load
-#define CABLE_ROL_LOAD_FEEDBACK     0xA3  ///< Cable roll present load feedback — int16 load
+#define CABLE_ROL_SETPOINT 0xA0        ///< Cable roll position setpoint — Float, rad
+#define CABLE_ROL_FEEDBACK 0xA1        ///< Cable roll position feedback — Float, rad
+#define CABLE_ROL_COMPLIANCE_CTRL 0xA2 ///< Compliance enable/disable + target load — uint8 enable, int16 target_load
+#define CABLE_ROL_LOAD_FEEDBACK 0xA3   ///< Cable roll present load feedback — int16 load
+
+// Cable roll — MK2 MOD3 only (0xAX)
+#define CABLE_ROL_SETPOINT 0xA0        ///< Cable roll position setpoint — Float, rad
+#define CABLE_ROL_FEEDBACK 0xA1        ///< Cable roll position feedback — Float, rad
+#define CABLE_ROL_COMPLIANCE_CTRL 0xA2 ///< Compliance enable/disable + target load — uint8 enable, int16 target_load
+#define CABLE_ROL_LOAD_FEEDBACK 0xA3   ///< Cable roll present load feedback — int16 load
 
 // Status and control (0x7X)
 #define MOTOR_TRACTION_REBOOT 0x71       ///< Reboot traction motors           (no payload)
@@ -62,8 +68,8 @@
 #define LED_HP_BRIGHTNESS 0x75           ///< LED HP board brightness  — uint8 (0=off, 255=max)
 
 // Arm velocity feedback — MK2 MOD1 only (0x8X)
-#define ARM_VELOCITY_SETPOINT 0x86   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity setpoint — Float×6, rad/s
-#define ARM_VELOCITY_FEEDBACK 0x88   ///< Arm J1a/J1b/J2/J3/J4/J5 velocity feedback — Float×6, rad/s
+#define ARM_VELOCITY_SETPOINT 0x86 ///< Arm J1a/J1b/J2/J3/J4/J5 velocity setpoint — Float×6, rad/s
+#define ARM_VELOCITY_FEEDBACK 0x88 ///< Arm J1a/J1b/J2/J3/J4/J5 velocity feedback — Float×6, rad/s
 
 // IMU raw data (0x9X) — optional, debug only
 #define IMU_RAW_ACCEL 0x92 ///< Raw accelerometer data (debug)
