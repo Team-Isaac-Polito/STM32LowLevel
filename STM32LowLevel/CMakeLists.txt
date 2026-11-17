@@ -27,6 +27,12 @@ elseif(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_definitions(NDEBUG)
 endif()
 
+# Optional startup diagnostics (only compiled in Debug builds)
+option(ENABLE_BUS_SCANS "Run I2C and Dynamixel startup scans in Debug builds" OFF)
+if(ENABLE_BUS_SCANS AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(ENABLE_BUS_SCANS)
+endif()
+
 # Set the project name
 set(CMAKE_PROJECT_NAME STM32LowLevel)
 

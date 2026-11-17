@@ -185,7 +185,7 @@ static void sendFeedback(void);
 static void handleSetpoint(uint8_t msgId, const uint8_t* msgData);
 static void dxlBusInit(USART_TypeDef* usart);
 static void dxlTractionInit(void);
-#ifdef DEBUG
+#if defined(DEBUG) && defined(ENABLE_BUS_SCANS)
 static void i2cBusScan(void);
 static void dxlIdScan(void);
 #endif
@@ -400,8 +400,8 @@ extern "C" int main(void)
     LOG_INFO("[main] Joint DXL ready\n");
 #endif
 
-    // Debug scans
-#ifdef DEBUG
+    // Optional debug bus scans
+#if defined(DEBUG) && defined(ENABLE_BUS_SCANS)
     i2cBusScan();
     dxlIdScan();
 #endif
@@ -556,7 +556,7 @@ extern "C" void systemClockConfig(void)
 
 /* USER CODE BEGIN 4 */
 
-#ifdef DEBUG
+#if defined(DEBUG) && defined(ENABLE_BUS_SCANS)
 /**
  * Scan I2C1 bus and log all responding devices.
  * Uses robust transfer with bus recovery on errors.
@@ -1189,6 +1189,7 @@ static void DXL_JOINT_INIT(void)
 }
 #endif // MODC_JOINT
 
+#if defined(DEBUG) && defined(ENABLE_BUS_SCANS)
 /**
  * Ping every valid Dynamixel ID and report responders to the debug console.
  */
@@ -1209,6 +1210,7 @@ static void dxlIdScan(void)
     }
     LOG_INFO("[DXL_SCAN] Complete: %u motor(s) responded\n", found);
 }
+#endif
 
 /**
  * Send telemetry CAN frames at DT_TEL cadence.
