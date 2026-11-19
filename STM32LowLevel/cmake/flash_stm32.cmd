@@ -12,15 +12,13 @@ if "%~1"=="" (
     echo [flash] ERROR: No binary file provided.
     exit /b 1
 )
-
 set BIN_FILE=%~1
 set DFU_VID_PID=0483:df11
 set DFU_ADDR=0x08000000
 set PYTHON_SCRIPT_PATH=%~dp0
 :: Gets the path for the bin file (e.s.: C:\STM32LowLevel\STM32LowLevel\build\debug\MK2_MOD1\STM32LowLevel.bin
 :: gives C:\STM32LowLevel\STM32LowLevel\build\debug\MK2_MOD1\)
-for %%i in ("%BIN_FILE%") do set "%BUILD_PATH%=%%~dpi"
-
+for %%i in ("%BIN_FILE%") do set BUILD_PATH=%%~dpi
 :: ── Internal re-launch path: interactive WSL Y/N prompt ──────────────────────
 if "%~2"=="--wsl-fallback" goto :wsl_interactive
 
