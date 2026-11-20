@@ -1,3 +1,4 @@
+@echo off
 setlocal enabledelayedexpansion
 
 :: Flash STM32 via dfu-util with WSL fallback
@@ -155,7 +156,7 @@ set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:Z:=/mnt/z%
 echo [flash] WSL path: %WSL_PATH%
 echo [flash] Python script WSL path: %PYTHON_SCRIPT_WSL_PATH%
 echo.
-wsl -- bash -lc "'%PYTHON_SCRIPT_WSL_PATH%/flash_stm32.sh' %WSL_PATH%"
+wsl -- bash -lc "'%PYTHON_SCRIPT_WSL_PATH%/flash_stm32.sh' '%WSL_PATH%'"
 set EXIT_CODE=%ERRORLEVEL%
 echo.
 if %EXIT_CODE% EQU 0 (
