@@ -29,13 +29,11 @@ import can
 try:
     from .protocol import ModuleAddress, MsgType, encode_can_id, decode_can_id, MSG_NAMES
     from .codec import encode_payload, decode_payload, format_decoded
-    from .connection import open_can_bus
     from .sender import CanSender
     from .monitor import CanMonitor, NAMED_FILTERS
 except ImportError:
     from protocol import ModuleAddress, MsgType, encode_can_id, decode_can_id, MSG_NAMES
     from codec import encode_payload, decode_payload, format_decoded
-    from connection import open_can_bus
     from sender import CanSender
     from monitor import CanMonitor, NAMED_FILTERS
 
@@ -1148,7 +1146,7 @@ def main():
         print("  (demo mode — no real CAN hardware required)")
 
     try:
-        bus = open_can_bus(
+        bus = can.Bus(
             interface=iface,
             channel=channel,
             bitrate=args.bitrate,

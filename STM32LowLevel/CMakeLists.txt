@@ -216,7 +216,7 @@ if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
 else()
     add_custom_target(flash
         COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${CMAKE_PROJECT_NAME}> ${CMAKE_PROJECT_NAME}.bin
-        COMMAND dfu-util -d 0483:df11 -a 0 --dfuse-address 0x08000000 -D ${CMAKE_PROJECT_NAME}.bin
+        COMMAND bash "${CMAKE_SOURCE_DIR}/cmake/flash_stm32.sh" "${CMAKE_BINARY_DIR}/${CMAKE_PROJECT_NAME}.bin"
         DEPENDS ${CMAKE_PROJECT_NAME}
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Flashing ${CMAKE_PROJECT_NAME}.bin to STM32 via DFU"

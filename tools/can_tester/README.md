@@ -6,20 +6,14 @@ commands and monitoring CAN bus traffic in real time.
 
 ## Hardware
 
-- **Preferred adapter**: [Ixxat USB-to-CAN/FD Standard](https://www.hms-networks.com/p/1-01-0381-12001-usb-to-can-fd-standard)
-  ([datasheet](https://docs.rs-online.com/4b99/A700000015391017.pdf))
-- **CAN breakout**: [Exsys D-Sub adapter](https://docs.rs-online.com/b663/A700000012656611.pdf)
-- **Legacy adapter**: Innomaker USB2CAN MS124
-  ([Part-DB #233](https://part-db.teamisaac.it/en/part/233/info)); retained for
-  backward compatibility
-- **Driver/backend**: Ixxat VCI on Windows, SocketCAN on Linux, or `gs_usb`
-  for the legacy Innomaker adapter
+- **USB2CAN adapter**: Innomaker USB2CAN MS124 ([Part-DB #233](https://part-db.teamisaac.it/en/part/233/info))
+- **Driver**: `gs_usb` — uses the WinUSB class driver on Windows, native kernel driver on Linux
 - **Bitrate**: 1 Mbit/s arbitration / 2 Mbit/s data (CAN FD with BRS, Extended 29-bit identifiers)
 
 ## Prerequisites
 
 - Python ≥ 3.10
-- The Ixxat adapter (preferred) or legacy Innomaker adapter plugged in via USB
+- The USB2CAN adapter plugged in via USB
 - CAN bus wiring between the adapter and at least one STM32 module
 
 ## Installation
@@ -36,48 +30,7 @@ pip install -r tools/can_tester/requirements.txt
 
 ## Platform Setup
 
-### Ixxat USB-to-CAN/FD Standard (preferred)
-
-#### Windows (VCI V4)
-
-1. Open the [HMS general downloads page](https://www.hms-networks.com/support/general-downloads).
-2. Under **Drivers** → **Windows drivers**, download **VCI - V4**.
-3. Run the installer and select **Standard installation**.
-4. Connect the adapter and check that it is visible in the installed Ixxat tools.
-
-The `python-can` Ixxat backend uses a numeric channel, normally `0` for the
-first channel.
-
-```powershell
-# Interactive CLI
-python -m tools.can_tester -i ixxat -c 0 -b 1000000 -D 2000000
-
-# Web dashboard
-python -m tools.can_tester.web_dashboard -i ixxat -c 0 -b 1000000 -D 2000000
-```
-
-#### Linux (SocketCAN)
-
-From the [HMS general downloads page](https://www.hms-networks.com/support/general-downloads),
-install the Ixxat **SocketCAN Driver for Linux**, configure the interface as
-`can0`, and use `-i socketcan -c can0`.
-
-```bash
-# Bring up the CAN FD interface at 1 Mbit/s arbitration + 2 Mbit/s data
-sudo ip link set can0 up type can bitrate 1000000 dbitrate 2000000 fd on
-
-# Verify
-ip -details link show can0
-```
-
-Native macOS support has not been validated.
-
-### Innomaker USB2CAN MS124 (legacy)
-
-These instructions are retained for backward compatibility with the previous
-team adapter.
-
-#### Linux (SocketCAN)
+### Linux (SocketCAN)
 
 The `gs_usb` kernel module is loaded automatically when you plug in the adapter.
 
@@ -92,7 +45,7 @@ sudo ip link set can0 up type can bitrate 1000000 dbitrate 2000000 fd on
 ip -details link show can0
 ```
 
-#### Windows (WinUSB)
+### Windows (WinUSB)
 
 If you have issues with the version of the driver that Windows automatically installs, you can manually switch to the WinUSB driver:
 
@@ -108,7 +61,7 @@ If you have issues with the version of the driver that Windows automatically ins
 > **Reference**: The [Innomaker USB2CAN GitHub repo](https://github.com/INNO-MAKER/usb2can)
 > has the official user manual, Windows software, and firmware notes.
 
-##### Windows ARM64 Quirk
+#### Windows ARM64 Quirk
 
 The standard `libusb` wheel ships only x64 binaries.
 On ARM64 Windows you must build `libusb` from source:
@@ -164,25 +117,22 @@ On ARM64 Windows you must build `libusb` from source:
 ### Web Dashboard
 
 ```bash
-# Start with the preferred Ixxat adapter on Windows
-python -m tools.can_tester.web_dashboard -i ixxat -c 0 --port 8080
+# Start with USB2CAN adapter (gs_usb)
+python -m tools.can_tester.web_dashboard -i gs_usb -c 0 --port 8080
 
-# Start with the preferred Ixxat adapter through SocketCAN on Linux
+# Start with SocketCAN (Linux)
 python -m tools.can_tester.web_dashboard -i socketcan -c can0
-
-# Start with the legacy Innomaker adapter (gs_usb)
-python -m tools.can_tester.web_dashboard -i gs_usb -c 0
 
 # Demo mode — no hardware required (virtual bus)
 python -m tools.can_tester.web_dashboard --demo
 
 # Custom port
-python -m tools.can_tester.web_dashboard -i ixxat -c 0 -p 9000
+python -m tools.can_tester.web_dashboard -i gs_usb -c 0 -p 9000
 
 # Debug mode — print received CAN messages to terminal
 # Useful when the dashboard display isn't working, to verify the backend
 # is receiving messages from the adapter:
-python -m tools.can_tester.web_dashboard -i ixxat -c 0 --debug
+python -m tools.can_tester.web_dashboard -i gs_usb -c 0 --debug
 ```
 
 Open `http://localhost:8080` in a browser. Features:
@@ -203,17 +153,14 @@ to see the last received message. This helps distinguish between hardware issues
 ### Interactive CLI
 
 ```bash
-# Windows (preferred Ixxat VCI)
-python -m tools.can_tester -i ixxat -c 0
-
-# Linux (preferred Ixxat adapter through SocketCAN)
+# Linux (SocketCAN)
 python -m tools.can_tester -i socketcan -c can0
 
-# Windows / Linux (legacy Innomaker through gs_usb)
+# Windows / Linux (gs_usb)
 python -m tools.can_tester -i gs_usb -c 0
 
 # Target a specific module
-python -m tools.can_tester -i ixxat -c 0 -m MK2_MOD2
+python -m tools.can_tester -i gs_usb -c 0 -m MK2_MOD2
 ```
 
 #### CLI Commands
@@ -258,14 +205,12 @@ can_tester/
 ├── protocol.py          # CAN ID / MsgType definitions (synced with communication.h)
 ├── header_parser.py     # C preprocessor for communication.h / mod_config.h validation
 ├── codec.py             # Payload encode/decode (struct-based)
-├── connection.py        # Shared python-can bus setup
 ├── sender.py            # High-level message sender
 ├── monitor.py           # Real-time bus monitor with named filters
 ├── cli.py               # Interactive REPL
 ├── web_dashboard.py     # Flask web UI with SSE
 ├── test_sequences.py    # Pre-built test routines
 ├── test_dry.py          # Offline validation tests
-├── test_connection.py   # Adapter setup and frame flag tests
 ├── requirements.txt     # Python dependencies
 ├── procedure.md         # Testing procedures and checklists
 └── README.md            # This file
@@ -292,9 +237,6 @@ Extended CAN identifiers (29-bit) are encoded as:
 
 - [CAN bus protocol](https://docs.teamisaac.it/doc/can-bus-protocol-t40e2NOEqp)
 - [STM32LowLevel firmware](https://github.com/Team-Isaac-Polito/STM32LowLevel)
-- [Ixxat USB-to-CAN/FD Standard datasheet](https://docs.rs-online.com/4b99/A700000015391017.pdf)
-- [Exsys D-Sub adapter datasheet](https://docs.rs-online.com/b663/A700000012656611.pdf)
-- [HMS software and driver downloads](https://www.hms-networks.com/support/general-downloads)
 - [Innomaker USB2CAN repo](https://github.com/INNO-MAKER/usb2can) — user manual, Windows software, firmware
 - [python-can documentation](https://python-can.readthedocs.io/)
 - [Part-DB entry for USB2CAN MS124](https://part-db.teamisaac.it/en/part/233/info)
