@@ -15,15 +15,15 @@ DFU_ADDR="0x08000000"
 PYTHON_SCRIPT_PATH=$(dirname "$(realpath $0)")
 
 if [ -z "$BIN_FILE" ]; then
-    printf "[flash] ERROR: No binary file provided.\n"
+    printf "[flash] ERROR: No binary file provided.\\n"
     exit 1
 fi
 
 if ! command -v dfu-util >/dev/null 2>&1; then
-    printf "[flash] dfu-util not found on this system.\n\n"
-    printf "[flash] Install it from the official https://sourceforge.net/projects/dfu-util/ page.\n\n"
-    printf "[flash] After installing, run the workflow again:\n"
-    printf  "     cmake --workflow --preset MK2_MOD1-flash\n\n"
+    printf "[flash] dfu-util not found on this system.\\n\\n"
+    printf "[flash] Install it from the official https://sourceforge.net/projects/dfu-util/ page.\\n\\n"
+    printf "[flash] After installing, run the workflow again:\\n"
+    printf  "     cmake --workflow --preset MK2_MOD1-flash\\n\\n"
     exit 1
 fi
 
@@ -31,16 +31,16 @@ if [ -f "$BUILD_PATH/output.dfu" ]; then
     rm "$BUILD_PATH/output.dfu"
 fi
 
-printf "[flash] Found dfu-util. Dumping firmware...\n\n"
+printf "[flash] Found dfu-util. Dumping firmware...\\n\\n"
 
 # Dumps the first bank (256KB in size)
 dfu-util -d $DFU_VID_PID -a 0 --dfuse-address $DFU_ADDR:262144 -U "$BUILD_PATH/dump.bin"
 if [ -f "$BUILD_PATH/output.dfu" ]; then
-    printf "[flash] Obtained last pushed firmware, diffing and flashing...\n\n"
+    printf "[flash] Obtained last pushed firmware, diffing and flashing...\\n\\n"
     python "$PYTHON_SCRIPT_PATH/diff.py" "$BUILD_PATH/dump.bin" "$BIN_FILE"
     dfu-util -d $DFU_VID_PID -a 0 -D "$BUILD_PATH/output.dfu"
 else
-    echo "[flash] Unable to obtain the dumped firmware, attempting to send full binary...\n\n"
+    echo "[flash] Unable to obtain the dumped firmware, attempting to send full binary...\\n\\n"
     dfu-util -d $DFU_VID_PID -a 0 --dfuse-address $DFU_ADDR -D "$BIN_FILE"
 fi
 
