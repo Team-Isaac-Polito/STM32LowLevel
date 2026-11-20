@@ -1,4 +1,3 @@
-@echo off
 setlocal enabledelayedexpansion
 
 :: Flash STM32 via dfu-util with WSL fallback
@@ -32,8 +31,12 @@ where dfu-util >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
     echo [flash] Found dfu-util. Dumping firmware...
     echo.
-    :: Dumps to 128KB
-    dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR%:131072 -U "%BUILD_PATH%\dump.bin" >nul 2>&1
+    :: `dfu-util` will refuse to dump the firmware if the file already exists
+    if exist "%BUILD_PATH%\dump.bin" (
+        del "%BUILD_PATH%\dump.bin"
+    )
+    :: Dumps the first bank (256KB in size)
+    dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR%:262144 -U "%BUILD_PATH%\dump.bin"
     if exist "%BUILD_PATH%\dump.bin" (
         echo [flash] Obtained last pushed firmware, diffing and flashing...
         echo.
@@ -119,9 +122,40 @@ set WSL_PATH=%WSL_PATH:X:=/mnt/x%
 set WSL_PATH=%WSL_PATH:Y:=/mnt/y%
 set WSL_PATH=%WSL_PATH:Z:=/mnt/z%
 
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_PATH%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:\=/%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:A:=/mnt/a%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:B:=/mnt/b%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:C:=/mnt/c%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:D:=/mnt/d%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:E:=/mnt/e%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:F:=/mnt/f%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:G:=/mnt/g%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:H:=/mnt/h%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:I:=/mnt/i%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:J:=/mnt/j%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:K:=/mnt/k%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:L:=/mnt/l%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:M:=/mnt/m%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:N:=/mnt/n%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:O:=/mnt/o%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:P:=/mnt/p%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:Q:=/mnt/q%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:R:=/mnt/r%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:S:=/mnt/s%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:T:=/mnt/t%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:U:=/mnt/u%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:V:=/mnt/v%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:W:=/mnt/w%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:X:=/mnt/x%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:Y:=/mnt/y%
+set PYTHON_SCRIPT_WSL_PATH=%PYTHON_SCRIPT_WSL_PATH:Z:=/mnt/z%
+
+
 echo [flash] WSL path: %WSL_PATH%
+echo [flash] Python script WSL path: %PYTHON_SCRIPT_WSL_PATH%
 echo.
-wsl -- bash -lc "dfu-util -d %DFU_VID_PID% -a 0 --dfuse-address %DFU_ADDR% -D '%WSL_PATH%'"
+wsl -- bash -lc "'%PYTHON_SCRIPT_WSL_PATH%/flash_stm32.sh' %WSL_PATH%"
 set EXIT_CODE=%ERRORLEVEL%
 echo.
 if %EXIT_CODE% EQU 0 (
